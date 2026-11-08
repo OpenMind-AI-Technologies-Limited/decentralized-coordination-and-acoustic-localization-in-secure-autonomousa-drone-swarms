@@ -143,7 +143,31 @@ def main():
         action="store_true",
         help="Run test suite only and exit",
     )
+    parser.add_argument(
+        "--mesh-simulation",
+        action="store_true",
+        help="Run experimental quorum-controlled Drone simulation without real hardware or GUI",
+    )
+    parser.add_argument(
+        "--mesh-gui",
+        action="store_true",
+        help="Open a simulation-only PyQt mesh coordination dashboard",
+    )
     args = parser.parse_args()
+    if sum(bool(x) for x in (args.test, args.mesh_simulation, args.mesh_gui)) > 1:
+        parser.error("Choose exactly one execution mode")
+
+    if args.mesh_gui:
+        from swarm_dashboard import start_mesh_dashboard
+        start_mesh_dashboard()
+        return
+
+    if args.mesh_simulation:
+        if args.test:
+            parser.error("--test and --mesh-simulation cannot be combined")
+        from mesh_simulation import demo
+        demo()
+        return
 
     if args.test:
         suite = unittest.defaultTestLoader.discover(".", pattern="test*.py")

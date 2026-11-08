@@ -17,6 +17,73 @@
 
 This is an end-to-end multi-drone swarm platform designed for high-security environments and vision-impaired conditions. The system integrates advanced Decentralized Coordination, Dynamic Obstacle Avoidance, and Acoustic Source Localization to ensure mission success even when GPS or visual data fails.
 
+## Authenticated distributed mesh (experimental, opt-in)
+
+A separate per-drone coordination runtime is available on this development branch:
+- `swarm_mesh.py`: Ed25519 member identities, signed encrypted messages, MCSS fitness scoring, epoch-bound quorum certificates, and certified commands.
+- `swarm_transport.py` / `swarm_runtime.py`: peer-addressed UDP delivery and independent local node loops.
+- `swarm_formation.py`: local V, line, circle and grid formation reference points with simple peer separation.
+- `test_swarm_coordination.py`: adversarial, UDP delivery, leader-failover and formation checks.
+- `mesh_simulation.py`: optional adapter using actual `Drone` kinematics and state, independent certified mesh command transport, and strict rejection of physical MAVSDK connections.
+- `test_mesh_simulation.py`: real simulator control-path, safety refusal and crash recovery integration tests.
+- `swarm_tasks.py`: deterministic cooperative task allocation using fresh authenticated peer telemetry; not distributed task consensus.
+- `test_swarm_tasks.py`: feasibility, deterministic tie behavior and 50-member assignment logic checks.
+- `swarm_identity_store.py`: optional local persistent Ed25519 identity with atomic single-writer vote journal; do not commit state files.
+- `test_swarm_identity_store.py`: restart, corruption, file-permission and vote-equivocation tests.
+
+Run **loopback-only coordination + actual Drone physics** (not physical UAV connections):
+
+```bash
+python -m pip install -r requirements.txt
+python -m pip install pytest
+python -m pytest -q test_swarm_coordination.py test_mesh_simulation.py test_swarm_tasks.py test_swarm_identity_store.py
+python mesh_demo.py                    # transport-only demo
+python mesh_simulation.py              # actual simulated Drone physics
+python main.py --mesh-simulation       # same opt-in physics demo via entry point
+```
+
+An optional `DroneMeshSimulation(..., identity_dir=".mesh-state")` uses persistent per-node identities and a single-writer election journal in the chosen directory. It is a local prototype store, not a hardware-backed keystore. Never commit or share that directory. The existing GUI and `SwarmManager` continue to use their original in-process control path. The experimental mesh adapter integrates with the existing `Drone` physics engine only, not with the default GUI or legacy manager; it is **not certified for physical flight**. Private keys and roster are ephemeral demo credentials, not production enrollment. Leader commands require a valid election certificate and recent heartbeats from a quorum. Quorum certificate safety assumes fixed, preauthenticated membership and honest nodes signing at most one candidate per epoch; **full Byzantine consensus, byzantine liveness, fault-safe autopilot integration and hardware validation are not claimed**. See [coordination research audit](Docs/COORDINATION_RESEARCH_AUDIT.md) for an explicit code-to-paper discrepancy list.
+
+### Full simulation deployment
+
+Use the new simulation-only PyQt coordination console:
+
+```bash
+python main.py --mesh-gui
+```
+
+To test **four independent operating-system processes** using local UDP
+instead of threads in the same process:
+
+```bash
+python swarm_deployment.py provision --out .mesh-state --members 4 --port 33900
+# Run each line in its own terminal:
+python swarm_deployment.py run --node .mesh-state/member-1 --duration 60
+python swarm_deployment.py run --node .mesh-state/member-2 --duration 60
+python swarm_deployment.py run --node .mesh-state/member-3 --duration 60
+python swarm_deployment.py run --node .mesh-state/member-4 --duration 60
+```
+
+Each private member directory contains its own Ed25519 identity, an
+operator-signed membership configuration, group transport key and crash-safe
+vote journal. The operator signing key is kept **only at the provisioner root**
+(`.mesh-state/operator-authority.json`). Never publish, commit or upload the
+root or member directories. The operator trust anchor can be explicitly pinned
+with `SWARM_MESH_AUTHORITY_PUB_HEX` (hex-encoded public key, copied over a
+trusted channel). A bundled public key without an independently pinned anchor
+is local demo trust, not adversarially secure provisioning.
+
+To exercise fully automated OS-process election, leader crash and recovery:
+
+```bash
+python -m pytest -q test_swarm_deployment.py
+```
+
+The transport prototype **binds loopback only**, keeps membership fixed, and
+uses synthetic telemetry. Initial leader election and crash recovery are
+measured in tests; no claims about real flight safety, complete Byzantine
+consensus, or robust arbitrary-network liveness are implied.
+
 ## Security
 
 For private vulnerability reporting and security handling expectations, see [SECURITY.md](SECURITY.md).

@@ -22,6 +22,7 @@ jobs:
 
     env:
       MPLBACKEND: Agg
+      QT_QPA_PLATFORM: offscreen
 
     steps:
       - name: Check out repository
@@ -43,28 +44,32 @@ jobs:
         shell: bash
         run: |
           python -m compileall \
-            acoustic_tracking.py \
-            communication.py \
-            drone.py \
-            dynamic_obstacles.py \
-            flying_ledger.py \
-            latency_monitor.py \
-            leader_follower_logic.py \
-            main.py \
-            ml_system.py \
-            ml_trainer.py \
-            swarm_manager.py \
-            test_dynamic_features.py \
-            test_ledger_and_acoustic.py \
+            acoustic_tracking.py communication.py drone.py dynamic_obstacles.py \
+            flying_ledger.py latency_monitor.py leader_follower_logic.py \
+            main.py ml_system.py ml_trainer.py swarm_manager.py \
+            swarm_mesh.py swarm_formation.py swarm_transport.py swarm_runtime.py \
+            mesh_demo.py mesh_simulation.py swarm_tasks.py swarm_identity_store.py \
+            swarm_deployment.py swarm_dashboard.py \
+            test_dynamic_features.py test_ledger_and_acoustic.py \
+            test_swarm_coordination.py test_swarm_identity_store.py \
+            test_mesh_simulation.py test_swarm_deployment.py \
+            test_swarm_dashboard.py test_swarm_tasks.py test_swarm_scaling.py \
             tests/gui_smoke_test.py
 
-      - name: Run targeted test suite
+      - name: Run full coordination and existing regression suites
         shell: bash
         run: |
           pytest -q \
             --junitxml=pytest-results.xml \
             test_dynamic_features.py \
-            test_ledger_and_acoustic.py
+            test_ledger_and_acoustic.py \
+            test_swarm_coordination.py \
+            test_mesh_simulation.py \
+            test_swarm_tasks.py \
+            test_swarm_identity_store.py \
+            test_swarm_deployment.py \
+            test_swarm_dashboard.py \
+            test_swarm_scaling.py
 
       - name: Upload Python test artifacts
         if: always()

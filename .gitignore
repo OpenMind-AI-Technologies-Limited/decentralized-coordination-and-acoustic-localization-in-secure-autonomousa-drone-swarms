@@ -13,3 +13,7 @@ performance_graph/log/
 performance_graphs/csv/
 performance_graphs/img/
 performance_graphs/log/
+
+# Local test or operator-provisioned node secrets
+.mesh-state/
+mesh-state/
