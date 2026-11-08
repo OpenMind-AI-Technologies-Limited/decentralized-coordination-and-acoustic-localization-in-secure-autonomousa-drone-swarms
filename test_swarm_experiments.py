@@ -39,6 +39,8 @@ class ElectionExperiments(unittest.TestCase):
         self.assertTrue(result["expected_outcome_met"])
         self.assertEqual(result["certified_honest_nodes"], 0)
         self.assertFalse(result["same_epoch_conflict"])
+        self.assertTrue(result["oracle_nominal_available"])
+        self.assertTrue(result["oracle_availability_without_quorum"])
 
     def test_quorum_side_of_partition_can_elect(self):
         result = run_election_trial(10, 29, "quorum_partition")
