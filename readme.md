@@ -17,6 +17,32 @@
 
 This is an end-to-end multi-drone swarm platform designed for high-security environments and vision-impaired conditions. The system integrates advanced Decentralized Coordination, Dynamic Obstacle Avoidance, and Acoustic Source Localization to ensure mission success even when GPS or visual data fails.
 
+## Reproducible swarm resilience experiments
+
+The software-validation branch includes a seeded experiment harness and raw
+evidence generator, using real signed mesh election code but a **virtual,
+deterministic packet network**. It evaluates N=5/10/20/50, packet loss,
+Byzantine vote withholding/equivocation, tampered envelopes, partitions,
+simulated leader failure, formation separation waypoints, task assignment,
+and synthetic acoustic source and known-beacon receiver localization.
+
+Run the tests and a full exploratory evidence sweep:
+
+```bash
+python -m pip install numpy scipy cryptography pytest
+python -m pytest -q test_swarm_experiments.py
+python swarm_experiment_runner.py --sizes 5 10 20 50 --trials 20 --seed 2026 --out experiment_outputs/swarm
+```
+
+The output contains per-trial CSV/JSON, a manifest, 95% confidence-interval
+summaries and REPORT.md. CI also generates 6 repeats per scenario and uploads
+the actual observed files as GitHub Actions artifacts.
+
+These are **not** physical flight, real RF latency, certified BFT liveness,
+measured power use, or field-validated GPS-denied autonomous navigation.
+See [experimental methodology](Docs/SWARM_EXPERIMENT_PROTOCOL.md) for detailed
+scenario definitions, transparent baseline limitations and reproducibility.
+
 ## Authenticated distributed mesh (experimental, opt-in)
 
 A separate per-drone coordination runtime is available on this development branch:
