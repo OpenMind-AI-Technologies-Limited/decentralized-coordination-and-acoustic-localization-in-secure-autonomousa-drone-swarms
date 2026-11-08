@@ -4,12 +4,15 @@ import json
 import math
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from experiment_statistics import bootstrap_interval, summarize_trials, wilson_interval
 from swarm_acoustic_experiments import beacon_trial, source_trials
 from swarm_experiment_runner import run_suite, write_evidence
 from swarm_geometry_experiments import allocation_trial, formation_trial
 from swarm_network_experiments import SCENARIOS, run_election_trial
+from swarm_mesh import ElectionCertificate, MeshNode, SwarmIdentity, _b64, _vote_payload
+import os
 
 
 class ElectionExperiments(unittest.TestCase):
@@ -67,6 +70,29 @@ class ElectionExperiments(unittest.TestCase):
             run_election_trial(5, 2, "unlisted_attack")
         with self.assertRaises(ValueError):
             run_election_trial(5, 2, "packet_loss", loss_rate=1.2)
+
+
+class CertificatePerformanceSafetyTests(unittest.TestCase):
+    def test_duplicate_verified_certificate_skips_revalidation_not_new_epoch(self):
+        identities = {i: SwarmIdentity(i) for i in range(1, 5)}
+        roster = {i: identity.public_bytes() for i, identity in identities.items()}
+        secret = os.urandom(32)
+        node = MeshNode(identities[1], roster, secret)
+        signatures = {
+            i: _b64(identity.private_key.sign(_vote_payload(1, 1)))
+            for i, identity in identities.items()
+        }
+        cert = ElectionCertificate(1, 1, signatures)
+        self.assertTrue(node._install_certificate(cert))
+        with patch.object(node, "_verify_certificate",
+                          side_effect=AssertionError("duplicate reverified")):
+            self.assertTrue(node._install_certificate(cert))
+            remote = MeshNode(identities[2], roster, secret)
+            node.receive(remote.channel.seal("certificate", 1, cert.to_dict()))
+        forged = ElectionCertificate(2, 1, signatures)
+        self.assertFalse(node._install_certificate(forged))
+        self.assertEqual(node.leader, 1)
+        self.assertEqual(node.certificate.epoch, 1)
 
 
 class GeometryExperiments(unittest.TestCase):
