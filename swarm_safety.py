@@ -72,8 +72,19 @@ class SimulatedMotionSafety:
             for other_id, position in peer_positions.items():
                 if int(other_id) == drone.drone_id:
                     continue
-                if math.dist(target, tuple(float(x) for x in position)) < self.min_separation_m:
-                    return SafetyDecision(False, "target_too_close_to_neighbor", "hold")
+                neighbor = tuple(float(x) for x in position)
+                if len(neighbor) != 3 or not all(math.isfinite(x) for x in neighbor):
+                    return SafetyDecision(False, "invalid_peer_telemetry", "hold")
+                # Check the complete planned straight segment against peers,
+                # not just the endpoint of the received command.
+                direction = tuple(target[i] - start[i] for i in range(3))
+                norm_sq = sum(x*x for x in direction)
+                projected = 0.0 if norm_sq < 1e-12 else max(
+                    0.0, min(1.0, sum((neighbor[i] - start[i]) * direction[i]
+                                      for i in range(3)) / norm_sq))
+                closest = tuple(start[i] + direction[i]*projected for i in range(3))
+                if math.dist(closest, neighbor) < self.min_separation_m:
+                    return SafetyDecision(False, "path_too_close_to_neighbor", "hold")
             # Heuristic velocity projection for the next three simulated seconds.
             vx = tuple((target[i] - start[i]) / 3.0 for i in range(3))
             risk = float(self.risk_model.predict_collision_risk(start, vx, time_horizon=3.0))
