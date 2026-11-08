@@ -63,6 +63,8 @@ The geometry experiment uses the repository's formation function and adds Gaussi
 
 For binary success fractions, we report two-sided 95% Wilson intervals; for continuous observations with at least two values, we use percentile bootstrap confidence intervals with 500 resamples. The intervals describe variability across six sampled synthetic trials; they do not constitute formal hypothesis tests, statistical guarantees under distribution shift, or independent hardware replication. Missing localization estimates are counted but not assigned zero error. The public raw trials.csv, trials.json, summary.json, manifest.json and REPORT.md form the executable evidence boundary. Independent replication must pin code revision, dependency versions, seed and experimental parameters and should report its own confidence intervals.
 
+Table 1 specifies the tested conditions, dependent metrics and the boundary separating simulated observations from any unmeasured physical behavior.
+
 ### Table 1. Experiment matrix
 
 | Subsystem | Conditions | Metric | Evidence boundary |
@@ -107,6 +109,8 @@ With approximately 20% simulated nodes below health eligibility thresholds, the 
 ### 5.4 Synthetic acoustic estimates: success and conditional error
 
 Table 3 separates receiver localization from sound-source estimation. The four-known-beacon receiver estimator localized all six samples per jitter condition with a mean conditional XY error of approximately 0.000 m at zero jitter (numerical precision), 0.044 m at 100 microseconds and 0.153 m at 350 microseconds. When the beacon reference was removed, it returned zero successful estimates and no position errors; these were left as missing instead of incorrectly counting them as zero. Sound-source impulse localization detected six of six events at the two lower sample-noise levels; at a noise standard deviation of 0.05 it detected five of six, and among those five detected estimates mean position error was 10.23 m. This counterexample invalidates any unconditional sub-3 m accuracy assertion across noise conditions.
+
+Figure 5 plots the jitter-conditioned receiver positioning errors; it is not a sound-source accuracy curve or a field GPS-denial result.
 
 ![Figure 5. Known-synchronized-beacon receiver localization under simulated arrival jitter.](figures/fig5_acoustic.svg)
 
