@@ -26,9 +26,35 @@
 - `swarm_formation.py`: each recipient computes deterministic V/line/circle/grid slots, with neighbor separation adjustments.
 - `swarm_tasks.py`: explicit greedy health-weighted task allocation (not globally optimal/leaderless).
 - `mesh_simulation.py`: headless opt-in adapter to existing `Drone` kinematics. Refuses real drone connections, accepts only certificate-authorized goto requests, validates flight state, radius and altitude, and tracks accepted/rejected commands.
-- `test_swarm_coordination.py`, `test_swarm_tasks.py`, `test_mesh_simulation.py`: individual-node elections, invalid signatures, partitions, revoked old commands, 50-node *assignment function* (not 50-vehicle flight), UDP recovery, task targets and real Drone simulator integration.
+- `test_swarm_coordination.py`, `test_swarm_tasks.py`, `test_mesh_simulation.py`, `test_swarm_identity_store.py`: individual-node elections, invalid signatures, partitions, revoked old commands, 50-node *assignment function* (not 50-vehicle flight), UDP recovery, task targets and real Drone simulator integration.
 
 The default GUI and `SwarmManager` paths remain unchanged. This branch connects the new runtime to existing `Drone` simulated physics **only through a separate opt-in adapter**. It does not replace the default GUI or certify physical flight.
+
+## Crash recovery and local state boundaries
+
+- `swarm_identity_store.py` provides opt-in `IdentityStore` (Ed25519 raw private
+  key in a local file) and `VoteJournal` (single-writer, atomic JSON replace).
+  Vote records are fsynced **before** a member issues its election signature.
+  The journal prevents conflicting votes after the same identity restarts.
+- Use a **private non-shared directory on each node**, with permission mode
+  0700 for directories and 0600 for secret files on POSIX. The local prototype
+  does not configure Windows ACLs, HSM integration, secure boot or key rotation.
+- `DroneMeshSimulation(..., identity_dir=".mesh-state")` reuses identities and
+  vote records in that directory, but its group encryption key and node roster
+  are still ephemeral local simulation inputs. This is NOT remote provisioning.
+- Committed certificates may be recovered from late packets when a node
+  tentatively advanced its election view. Epoch and quorum safety across
+  *different* certificates under arbitrary network partitions remains
+  unproved: a production protocol needs formal view-change locking.
+- Ed25519 signatures authenticate origin, but reported battery, link and motor
+  health are **not attested**. Malicious or faulty members may lie about fitness.
+- Crash durability is limited to the local ballot file and key. Network
+  receive replay windows, certified leadership lease state, runtime telemetry
+  and previous process commands are not persisted. An abrupt process restart
+  must fail closed until fresh quorum and valid certificate are established.
+- The current experiments do not yet demonstrate Byzantine liveness or
+  safety of real UAV flight. Peer heartbeat timeouts are failure suspicions,
+  not proof that the node has failed.
 
 ## Election safety claim and assumptions
 
@@ -43,7 +69,7 @@ This is **same-epoch quorum-certificate safety under stated assumptions**. It is
 ```bash
 python -m pip install -r requirements.txt
 python -m pip install pytest
-python -m pytest -q test_swarm_coordination.py test_swarm_tasks.py test_mesh_simulation.py
+python -m pytest -q test_swarm_coordination.py test_swarm_tasks.py test_mesh_simulation.py test_swarm_identity_store.py
 python -m pytest -q test_dynamic_features.py test_ledger_and_acoustic.py
 python mesh_simulation.py  # headless, simulation only
 ```
