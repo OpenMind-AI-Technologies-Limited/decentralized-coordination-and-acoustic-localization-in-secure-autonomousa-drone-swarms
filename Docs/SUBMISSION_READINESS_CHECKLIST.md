@@ -3,7 +3,7 @@
 **Manuscript:** `research_paper.md` (this branch); 27 verified and relevant cited scholarly/standards sources.
 **Prepared:** 8 November 2026.
 **Artifact scope:** software-only synthetic research, not hardware flight certification.
-**Current archive source:** `d7393ba91166acd3b632cbb51a584b5611196edb`, evidence workflow [GitHub Actions run 42454145395](https://github.com/smshagor-dev/decentralized-coordination-and-acoustic-localization-in-secure-autonomousa-drone-swarms/actions/runs/42454145395), 378 recorded trial rows across 63 settings.
+**Current archive source:** `78cce082c5acabe68ebc5f76a32872b210308af5`, evidence workflow [GitHub Actions run 42455738522](https://github.com/smshagor-dev/decentralized-coordination-and-acoustic-localization-in-secure-autonomousa-drone-swarms/actions/runs/42455738522), 378 recorded trial rows across 63 settings.
 
 ## Completed
 - Replaced the unsupported legacy paper claims with a correctly scoped original software-validation manuscript, including abstract, introduction, related research, implementation, threat model, methods, experiment table, raw results, figure captions, discussion, limitations, conclusions and declarations.
