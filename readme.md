@@ -6,7 +6,7 @@
 #   Developer : Md Shahanur Islam Shagor                                #
 #   Role      : Project Architect & Lead Developer                      #
 #   Version   : 1.0.2                                                   #
-#   Status    : Production Ready                                        #
+#   Status    : Reproducible Research Prototype                                        #
 #                                                                       #
 #   "Protecting the skies with decentralized intelligence."             #
 #                                                                       #
@@ -15,7 +15,7 @@
 
 # Decentralized Coordination and Acoustic Localization in Secure Autonomous Drone Swarms
 
-This is an end-to-end multi-drone swarm platform designed for high-security environments and vision-impaired conditions. The system integrates advanced Decentralized Coordination, Dynamic Obstacle Avoidance, and Acoustic Source Localization to ensure mission success even when GPS or visual data fails.
+This repository contains an experimental UAV-swarm software prototype and controlled simulator components. The opt-in authenticated coordination, acoustic estimators, task allocation and fault-injection workflows have automated software validation; **no real-flight certification, fully proven Byzantine agreement, or field-validated autonomous GNSS-denied navigation is claimed**. The original default GUI and newer simulation-only authenticated mesh are distinct execution paths.
 
 ## Reproducible swarm resilience experiments
 
@@ -42,6 +42,14 @@ These are **not** physical flight, real RF latency, certified BFT liveness,
 measured power use, or field-validated GPS-denied autonomous navigation.
 See [experimental methodology](Docs/SWARM_EXPERIMENT_PROTOCOL.md) for detailed
 scenario definitions, transparent baseline limitations and reproducibility.
+
+## Current manuscript and evidence
+
+**Current research manuscript:** [Reproducible Software Validation of Authenticated UAV Swarm Coordination](research_paper.md). This journal-neutral 27-reference manuscript uses 378 archived synthetic trial rows from experiment revision `d7393ba91166acd3b632cbb51a584b5611196edb`, with visible source attribution and explicit validity limits. The five research figures are stored as text-based SVG files in [figures/](figures/).
+
+**Do not submit the older `Docs/Research-Paper.pdf` as the current evidence-backed manuscript.** It represents an earlier proposal and contains claims not substantiated by these software-validation experiments. The new manuscript replaces its claims; the approved PDF/DOCX manuscript is provided separately as the submission package.
+
+**Submission requirements:** Confirm the target journal, corresponding email, affiliations, funding and interests; disclose overlap with the previously published acoustic conference work and any related manuscripts under review. A DOI for a permanent archived data/software release should be created and added if the journal mandates one.
 
 ## Authenticated distributed mesh (experimental, opt-in)
 
