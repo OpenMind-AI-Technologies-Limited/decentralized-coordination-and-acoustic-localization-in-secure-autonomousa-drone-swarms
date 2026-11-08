@@ -84,6 +84,42 @@ uses synthetic telemetry. Initial leader election and crash recovery are
 measured in tests; no claims about real flight safety, complete Byzantine
 consensus, or robust arbitrary-network liveness are implied.
 
+
+## Acoustic localization, quorum audit, and simulated safety
+
+The opt-in coordination simulator now supports reproducible **sound-source XY
+localization** (not UAV self-localization), a separate static-membership quorum
+flight audit with signed certificates, and a fail-closed rule-based motion
+safety monitor. These capabilities do not alter the legacy GUI/SwarmManager
+control route. The safety monitor uses explainable obstacle-risk heuristics,
+not a trained collision-prediction classifier.
+
+```bash
+python main.py --mesh-gui
+python main.py --mesh-simulation
+python acoustic_benchmark.py --seed 26 --trials 12 --out experiment_outputs/acoustic
+python -m pytest -q test_acoustic_quality.py test_acoustic_benchmark.py \
+    test_quorum_audit.py test_swarm_safety.py test_swarm_resilience.py
+```
+
+The simulator can measure actual localhost **signed UDP round-trip latency**;
+legacy `MLBridge` timings remain synthetic and are not silently treated as
+real measurements. Signed formation/task intentions are committed to the new
+quorum audit before dispatch. If another drone lies along a desired straight
+route, the simulator can stage a safe elevated waypoint and re-evaluate the
+remaining path using live member positions. It holds unsafe movement on
+quorum loss/excessive observed RTT and attempts local return home on battery
+or motor degradation.
+
+See [Acoustic, ledger and safety validation](
+Docs/ACOUSTIC_LEDGER_SAFETY_VALIDATION.md) for threat assumptions, evidence,
+limitations, formulas, and reproducible synthetic experiment outputs.
+
+**Safety boundary:** static roster, loopback/testbed-only software operation;
+no certified physical UAV safety, full Byzantine consensus, synchronized
+microphone hardware or GPS-denied self-localization.
+
+
 ## Security
 
 For private vulnerability reporting and security handling expectations, see [SECURITY.md](SECURITY.md).
