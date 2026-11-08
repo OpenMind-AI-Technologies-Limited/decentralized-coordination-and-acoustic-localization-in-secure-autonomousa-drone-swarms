@@ -111,6 +111,40 @@ class MeshTests(unittest.TestCase):
         self.assertNotIn(4, self.nodes[0].votes[1])
 
 
+class AuthorityLeaseTests(unittest.TestCase):
+    def make_nodes(self):
+        clock = FakeClock()
+        identities = [SwarmIdentity(i) for i in range(1, 5)]
+        roster = {i.node_id: i.public_bytes() for i in identities}
+        key = os.urandom(32)
+        nodes = [MeshNode(i, roster, key, clock=clock) for i in identities]
+        network = InMemoryMesh(nodes)
+        for rank, node in enumerate(nodes):
+            network.broadcast(node.node_id, node.publish_health(HealthReport(90 - rank*10, 80, 80)))
+        packets = [(node.node_id, node.begin_election()) for node in nodes]
+        for sender, packet in packets:
+            network.broadcast(sender, packet)
+        return clock, nodes, network
+
+    def test_local_leader_heartbeat_renewal(self):
+        clock, nodes, network = self.make_nodes()
+        self.assertEqual(nodes[0].leader, 1)
+        clock.now += 4.0
+        nodes[0].publish_health(HealthReport(90, 80, 80))
+        clock.now += 2.0
+        self.assertFalse(nodes[0].leader_timed_out())
+
+    def test_malicious_premature_epoch_vote_does_not_displace_live_leader(self):
+        clock, nodes, network = self.make_nodes()
+        self.assertEqual(nodes[1].leader, 1)
+        compromised = nodes[3]
+        proof = base64.b64encode(compromised.identity.private_key.sign(_vote_payload(2, 4))).decode("ascii")
+        packet = compromised.channel.seal("vote", 2, {"candidate": 4, "proof": proof})
+        nodes[1].receive(packet)
+        self.assertEqual(nodes[1].leader, 1)
+        self.assertEqual(nodes[1].epoch, 1)
+
+
 class FormationTests(unittest.TestCase):
     def test_leader_remains_at_origin(self):
         self.assertEqual(formation_target(1, 1, [1, 2, 3, 4], [2, 3, 30], [1, 0]), (2, 3, 30))
