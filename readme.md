@@ -88,7 +88,8 @@ consensus, or robust arbitrary-network liveness are implied.
 ## Acoustic localization, quorum audit, and simulated safety
 
 The opt-in coordination simulator now supports reproducible **sound-source XY
-localization** (not UAV self-localization), a separate static-membership quorum
+localization**, a separate **known synchronized beacon receiver XY** estimator
+(no GPS input, software simulation only), a static-membership quorum
 flight audit with signed certificates, and a fail-closed rule-based motion
 safety monitor. These capabilities do not alter the legacy GUI/SwarmManager
 control route. The safety monitor uses explainable obstacle-risk heuristics,
@@ -98,7 +99,7 @@ not a trained collision-prediction classifier.
 python main.py --mesh-gui
 python main.py --mesh-simulation
 python acoustic_benchmark.py --seed 26 --trials 12 --out experiment_outputs/acoustic
-python -m pytest -q test_acoustic_quality.py test_acoustic_benchmark.py \
+python -m pytest -q test_acoustic_quality.py test_acoustic_benchmark.py test_beacon_localization.py \
     test_quorum_audit.py test_ledger_integrity.py \
     test_swarm_safety.py test_swarm_model_validation.py test_swarm_resilience.py
 ```
