@@ -43,6 +43,8 @@ measured power use, or field-validated GPS-denied autonomous navigation.
 See [experimental methodology](Docs/SWARM_EXPERIMENT_PROTOCOL.md) for detailed
 scenario definitions, transparent baseline limitations and reproducibility.
 
+> **Documentation cleanup (November 2026):** Legacy PNG screenshots, plotted results, research-image duplicates, and obsolete architecture graphics have been removed from the tracked repository. The current manuscript-specific diagrams are maintained as five SVG assets in [figures/](figures/). No simulation results or hardware validation should be inferred from older image captions. Experimental source, datasets, protocol notes, and historical PDFs remain available for traceability.
+
 ## Current manuscript and evidence
 
 **Current study:** *Quorum-Gated Authority and Safety–Availability Trade-offs in Decentralized UAV Swarms under Communication Faults* (SN Computer Science, Original Research submission preparation).
@@ -687,7 +689,6 @@ High-level swarm states:
   - RETURN_TO_HOME
 - Followers execute commands through event bus, not uncontrolled autonomous drift
 
-![Leader Election Convergence Time](Docs/leader_election_convergence_time.png)
 
 ## 5.3 Mission X->Y and Auto Return
 - Team takeoff from X slots
@@ -734,7 +735,6 @@ High-level swarm states:
   - fallback local geometric avoidance enabled
   - warning event logged and shown in GUI
 
-![Swarm Communication Latency](Docs/swarm_commonication_letency.png)
 
 ## 5.7 Emergency and Fault Handling
 - Motor failure detection (degraded return mode)
@@ -759,7 +759,6 @@ High-level swarm states:
 - Failure detection:
   - motor is marked `DEGRADED` when RPM drops `>=10%` vs rolling average.
 
-![Motor Failure Survival Result](Docs/motor%20failur%20survival%20result.png)
   - self-healing mode activates automatically for single-motor degradation.
 - Physics compensation:
   - uses `T = sum(T_i)` to maintain total lift.
@@ -924,7 +923,6 @@ $$
 z_{new}=\max(z_h, z-r_d\Delta t),\quad r_d=0.5V_{land}\ (\text{degraded: }0.6\times 0.5V_{land})
 $$
 
-![Drone Return Physics Math Model](Docs/Drone_Return_physics_math_Calculatiion_Model.png)
 
 ### 13.4 Wind Disturbance + Compensation (Degraded Mode)
 
@@ -1047,8 +1045,6 @@ $$
 T_{th}=\text{clip}_{[110,280]}\left(220-\min(70,3\|v\|)-\min(55,0.8(100-P))\right)
 $$
 
-![Average Latency Arrival Time Interval](Docs/Average-latency-arrival-time-interval.png)
-![Runtime vs Drones](Docs/runtime%20vs%20drones.png)
 
 ### 13.9 Acoustic Localization (TDOA)
 
@@ -1078,8 +1074,6 @@ $$
 \mathrm{local\_only} = \left(T_{\mathrm{rtt,ms}} > T_{\mathrm{acoustic\_limit}}\right)
 $$
 
-![Acoustic Sensor Layout](Docs/sensors-15-13326f2-1024.png)
-![Acoustic Localization Error](Docs/Acoustic_localization_error.png)
 
 ### 13.10 Flying Ledger Integrity
 
@@ -1101,8 +1095,6 @@ $$
 
 Replication accepts block only if index/prev-hash/hash/signature all verify.
 
-![Blockchain Type](Docs/Blockchain%20Type.png)
-![Blockchain Integrity](Docs/blockchain_intergrity.png)
 
 ## 14. Output Artifacts
 
@@ -1112,8 +1104,6 @@ Replication accepts block only if index/prev-hash/hash/signature all verify.
 - `performance_graphs/logs/`: merged logs for plotting
 - `models/`: per-drone ML model snapshots (`.npz`)
 
-![CSV Log Snapshot](Docs/csv%20log.png)
-![Result Log Snapshot](Docs/result%20log.png)
 
 ## 15. Research Contributions
 
@@ -1667,14 +1657,3 @@ Verification is performed via Ed25519 digital signatures to ensure non-repudiati
 - [Project Report (PDF)](Docs/DroneSwarm_Report.pdf)
 - [Research Paper (PDF)](Docs/Research-Paper.pdf)
 
-![System-Level Architecture](Docs/System-Architecture.png)
-![System Overview](Docs/system-overview.png)
-![System Architecture](Docs/system_architecher.png)
-![Coordination and Command System](Docs/communication_flowchart.png)
-![Drone Subsystem Coordination](Docs/drones-sub-system.png)
-![Dynamic Obstacle Avoidance System](Docs/Dynamic-Obstacle-Avoidance-System.png)
-![Latency and Safety Fallback System](Docs/Latency-and-Safety-Fallback-System.png)
-![Acoustic Localization System](Docs/Acoustic-Localization-System.png)
-![Secure Communication System](Docs/Secure-Communication-System.png)
-![Flying Ledger System](Docs/Flying-Ledger-System.png)
-![Drone Swrame Architecture](Docs/Drone-Swrame-Architecture.png)
