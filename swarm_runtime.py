@@ -114,13 +114,16 @@ class MeshRuntime:
             now = time.monotonic()
             if self.node.leader_timed_out():
                 self.node.expire_leader()
+                self._election_retries = 0
                 self._last_election = 0.0
+            if self.node.leader is not None:
+                self._election_retries = 0
             if self.node.leader is None and now - self._last_election >= self.election_retry_s:
                 fresh = sum(1 for _, seen_at in self.node.health.values()
                             if self.node.clock() - seen_at <= self.node.timeout_s)
                 if fresh >= self.node.quorum:
                     try:
-                        if self.node.epoch in self.node.voted_epochs and self._election_retries < 3:
+                        if self.node.epoch in self.node.voted_epochs and self._election_retries < 9:
                             packet = self.node.retransmit_vote()
                             self._election_retries += 1
                         else:
