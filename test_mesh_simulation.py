@@ -1,6 +1,7 @@
 """Integration and safety tests against the existing Drone kinematics engine."""
 import math
 import time
+import tempfile
 import unittest
 
 from drone import Drone, FlightMode, Position
@@ -33,6 +34,21 @@ class MeshSimulatorTests(unittest.TestCase):
         self.drones[3].use_real_drone = True
         with self.assertRaises(PermissionError):
             DroneMeshSimulation(self.drones)
+
+    def test_optional_stored_identities_survive_new_simulator_instance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            first = DroneMeshSimulation(self.drones, identity_dir=directory)
+            initial = {node_id: ident.public_bytes()
+                       for node_id, ident in first._identities.items()}
+            first.stop()
+            second = DroneMeshSimulation(self.drones, identity_dir=directory)
+            try:
+                restored = {node_id: ident.public_bytes()
+                            for node_id, ident in second._identities.items()}
+                self.assertEqual(initial, restored)
+                self.assertTrue(all(n.vote_journal is not None for n in second.nodes.values()))
+            finally:
+                second.stop()
 
     def test_rejects_incomplete_roster(self):
         with self.assertRaises(ValueError):
