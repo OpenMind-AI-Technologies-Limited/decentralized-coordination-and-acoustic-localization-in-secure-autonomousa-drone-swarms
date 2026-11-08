@@ -45,11 +45,28 @@ scenario definitions, transparent baseline limitations and reproducibility.
 
 ## Current manuscript and evidence
 
-**Current research manuscript:** [Reproducible Software Validation of Authenticated UAV Swarm Coordination](research_paper.md). This journal-neutral 27-reference manuscript uses 378 archived synthetic trial rows from experiment revision `78cce082c5acabe68ebc5f76a32872b210308af5`, with visible source attribution and explicit validity limits. The five research figures are stored as text-based SVG files in [figures/](figures/).
+**Current study:** *Quorum-Gated Authority and Safety–Availability Trade-offs in Decentralized UAV Swarms under Communication Faults* (SN Computer Science, Original Research submission preparation).
 
-**Do not submit the older `Docs/Research-Paper.pdf` as the current evidence-backed manuscript.** It represents an earlier proposal and contains claims not substantiated by these software-validation experiments. The new manuscript replaces its claims; the approved PDF/DOCX manuscript is provided separately as the submission package.
+The research examines **quorum-certified authority versus protective refusal** under network partitions, communication losses, and selected Byzantine-fault scenarios. The study also reports communication overhead and separate simulated waypoint, assignment, and acoustic experiments. The scope is **fixed-membership, seeded software simulation**, not certified physical-flight validation.
 
-**Submission requirements:** Confirm the target journal, corresponding email, affiliations, funding and interests; disclose overlap with the previously published acoustic conference work and any related manuscripts under review. A DOI for a permanent archived data/software release should be created and added if the journal mandates one.
+| Item | Evidence boundary |
+| --- | --- |
+| Network experiments | Swarm sizes 5, 10, 20 and 50; eight specified scenarios; six seeded repetitions per condition |
+| Full experimental set | 63 settings and 378 synthetic observations, including geometry, task-allocation and acoustic studies |
+| Mathematical claim | Conditional same-epoch quorum intersection under stated membership and honest-vote assumptions; not a general Byzantine-consensus proof |
+| Figures and methods | [Experiment protocol](Docs/SWARM_EXPERIMENT_PROTOCOL.md), [quorum audit](Docs/COORDINATION_RESEARCH_AUDIT.md), and [research figures](figures/) |
+| Research prototype | [Experiment runner](swarm_experiment_runner.py), [network experiments](swarm_network_experiments.py), [geometry experiments](swarm_geometry_experiments.py), [acoustic experiments](swarm_acoustic_experiments.py) |
+| Existing draft | [Historical research draft](research_paper.md) is **not** the final submitted DOCX/PDF |
+
+**Evidence provenance:** The final S1/S2 trial datasets, methods, claims audit, and checksum manifest belong to the separate journal supplementary submission package. They must be verified against the manuscript before submission; this README does not represent all 378 trial rows as files currently checked into this repository.
+
+**What is not established:** hardware-in-the-loop or real-flight performance, unrestricted Byzantine agreement, fully dynamic membership safety, calibrated GPS-denied autonomous navigation, or collision-free physical trajectories. Historical architecture imagery, older benchmark screenshots, GUI results, and prior PDFs elsewhere in this repository must not be treated as measurements from this specific manuscript.
+
+**Originality and submission:** The authors must verify all numerical claims and baselines, confirm contributions/funding/conflicts, and disclose overlap with prior acoustic work or related submissions. The separately maintained journal manuscript is the authoritative submission document; do not submit the older `Docs/Research-Paper.pdf` as a replacement.
+
+### Documentation and assets cleanup
+
+The `Docs/research_img/` legacy folder previously included 31 byte-identical pairs of figure images with two casing/punctuation conventions. The `fig. N.png` copies are retained; the redundant `Fig. N..png` variants were removed (including the spaced punctuation variant of figure 31). Experiment scripts, datasets, primary figures and historical documentation remain intact. Automatically produced plots and result logs should be retained as evidence **only when their provenance and use are documented**, not presented as benchmark findings simply because an image or JSON file exists.
 
 ## Authenticated distributed mesh (experimental, opt-in)
 
