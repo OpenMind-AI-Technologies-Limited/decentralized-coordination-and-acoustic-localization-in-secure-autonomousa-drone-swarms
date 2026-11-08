@@ -123,7 +123,7 @@ def _markdown_report(summary: list[dict], manifest: dict) -> str:
         "|---|---|---:|---:|---|",
     ]
     priorities = {
-        "election": "converged", "formation": "pair_violation_reduction",
+        "election": "expected_outcome_met", "formation": "pair_violation_reduction",
         "allocation": "ineligible_assignment_reduction",
         "beacon_receiver": "position_error_m",
         "acoustic_source": "position_error_m",
