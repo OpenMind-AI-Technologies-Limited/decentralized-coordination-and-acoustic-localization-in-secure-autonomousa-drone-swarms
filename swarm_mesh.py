@@ -209,6 +209,8 @@ class MeshNode:
         self.issued_certificate_epochs: set[int] = set()
         self.delivered_commands: list[dict] = []
         self.positions: Dict[int, tuple[float, float, float]] = {}
+        self._rtt_pending: Dict[str, tuple[int, float]] = {}
+        self.measured_peer_rtt_ms: Dict[int, float] = {}
         self.on_command: Optional[Callable[[dict], None]] = None
 
     def publish_health(self, health: HealthReport, position: Optional[tuple[float, float, float]] = None) -> bytes:
@@ -330,11 +332,41 @@ class MeshNode:
         self.last_leader_heartbeat = self.clock()
         return True
 
+    def start_latency_probe(self, recipient: int) -> bytes:
+        """Start genuine UDP RTT timing; never infer C++/Python IPC latency."""
+        if recipient not in self.roster or recipient == self.node_id:
+            raise ValueError("Invalid probe recipient")
+        nonce = os.urandom(12).hex()
+        self._rtt_pending[nonce] = (recipient, time.perf_counter())
+        if len(self._rtt_pending) > 128:
+            for old_nonce in list(self._rtt_pending)[:32]:
+                self._rtt_pending.pop(old_nonce, None)
+        return self.channel.seal("rtt_probe", self.epoch,
+                                 {"nonce": nonce, "target": recipient})
+
     def receive(self, packet: bytes) -> list[bytes]:
         """Validate a peer packet and return any resulting gossip packets."""
         msg = self.channel.open(packet)
         sender, epoch = int(msg["sender"]), int(msg["epoch"])
         kind, body = msg["kind"], msg["body"]
+        if kind == "rtt_probe":
+            if int(body.get("target", -1)) != self.node_id:
+                return []
+            nonce = str(body.get("nonce", ""))
+            if len(nonce) != 24 or any(ch not in "0123456789abcdef" for ch in nonce):
+                return []
+            return [self.channel.seal("rtt_reply", self.epoch,
+                    {"nonce": nonce, "target": sender})]
+        if kind == "rtt_reply":
+            if int(body.get("target", -1)) != self.node_id:
+                return []
+            nonce = str(body.get("nonce", ""))
+            pending = self._rtt_pending.pop(nonce, None)
+            if pending is not None and pending[0] == sender:
+                elapsed = (time.perf_counter() - pending[1]) * 1000.0
+                if 0 <= elapsed <= 60_000:
+                    self.measured_peer_rtt_ms[sender] = elapsed
+            return []
         if kind == "heartbeat":
             report = HealthReport.from_dict(body["health"])
             if isinstance(body.get("certificate"), dict):

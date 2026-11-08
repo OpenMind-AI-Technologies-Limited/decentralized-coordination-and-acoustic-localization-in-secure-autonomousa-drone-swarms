@@ -21,6 +21,11 @@ from swarm_identity_store import IdentityStore, VoteJournal
 from swarm_runtime import MeshRuntime
 from swarm_tasks import allocate_tasks
 from swarm_transport import UdpPeerTransport
+from quorum_audit import QuorumAuditLedger
+from acoustic_tracking import AcousticTrackingSystem
+from beacon_localization import estimate_receiver_xy
+from swarm_safety import SimulatedMotionSafety
+from swarm_model_validation import velocity_advisory
 
 
 class DroneMeshSimulation:
@@ -42,7 +47,10 @@ class DroneMeshSimulation:
         self._lock = threading.RLock()
         self.events: list[dict] = []
         self.running = False
+        self._safety_stop = threading.Event()
+        self._safety_thread: Optional[threading.Thread] = None
         self._owned_drone_ids: set[int] = set()
+        self._deferred_motions: dict[int, dict] = {}
         self._runtimes: dict[int, MeshRuntime] = {}
         self._transports: dict[int, UdpPeerTransport] = {}
         # Persisted identities are opt-in. Each drone must have exactly one
@@ -79,6 +87,14 @@ class DroneMeshSimulation:
             for transport in self._transports.values():
                 transport.close()
             raise
+        self.acoustic_tracker = AcousticTrackingSystem()
+        self.motion_safety = SimulatedMotionSafety()
+        self.observed_latency_ms: Optional[float] = None
+        self.audit_ledgers = {
+            node_id: QuorumAuditLedger(
+                self._identities[node_id], roster, store_directory=identity_dir)
+            for node_id in self.drones
+        }
 
     def _health(self, drone: Drone):
         motors = list(drone.motors)
@@ -114,8 +130,43 @@ class DroneMeshSimulation:
                 raise ValueError("Drone not explicitly armed locally")
             if drone.flight_mode not in (FlightMode.HOVER, FlightMode.FLYING):
                 raise ValueError("Drone not in a controllable flight state")
+            peers = {
+                i: (d.current_position.x, d.current_position.y, d.current_position.z)
+                for i, d in self.drones.items()
+                if i != node_id and not self._runtimes[i]._stop.is_set()
+            }
+            decision = self.motion_safety.assess(
+                drone, xyz, peers,
+                observed_latency_ms=self.observed_latency_ms,
+                quorum_available=self._runtimes[node_id].node.has_fresh_quorum(),
+            )
+            if not decision.allowed and decision.reason == "path_too_close_to_neighbor":
+                waypoint = self.motion_safety.vertical_escape_waypoint(
+                    drone, xyz, peers,
+                    observed_latency_ms=self.observed_latency_ms,
+                    quorum_available=self._runtimes[node_id].node.has_fresh_quorum(),
+                )
+                if waypoint is not None and drone.goto(Position(*waypoint)):
+                    self._deferred_motions[node_id] = dict(action)
+                    event.update({
+                        "accepted": True, "path_replanned": True,
+                        "target_xyz": list(waypoint), "requested_target_xyz": list(xyz),
+                        "epoch": action.get("coordination_epoch"),
+                        "task_id": action.get("task_id"),
+                    })
+                    return
+            if not decision.allowed:
+                event["fallback"] = decision.fallback
+                event["predicted_collision_risk"] = decision.predicted_risk
+                if decision.fallback == "local_rth":
+                    drone.return_to_home("Simulation-local safety fallback")
+                elif decision.fallback == "hold" and drone.flight_mode == FlightMode.FLYING:
+                    drone.target_position = None
+                    drone.flight_mode = FlightMode.HOVER
+                raise ValueError(decision.reason)
             if not drone.goto(Position(*xyz)):
                 raise ValueError("Drone rejected target under its own flight constraints")
+            self._deferred_motions.pop(node_id, None)
             event.update({"accepted": True, "target_xyz": list(xyz),
                           "epoch": action.get("coordination_epoch"),
                           "task_id": action.get("task_id")})
@@ -139,12 +190,63 @@ class DroneMeshSimulation:
                 self._owned_drone_ids.add(node_id)
         for runtime in self._runtimes.values():
             runtime.start()
+        self._safety_stop.clear()
+        self._safety_thread = threading.Thread(
+            target=self._safety_loop, name="simulated-swarm-safety", daemon=True)
+        self._safety_thread.start()
+
+    def safety_sweep(self) -> None:
+        """Fail safely for *running simulated drones* after quorum/health loss."""
+        if not self.running:
+            return
+        for node_id, drone in self.drones.items():
+            runtime = self._runtimes[node_id]
+            if runtime._stop.is_set() or not drone.is_active:
+                continue
+            if (drone.battery_level <= self.motion_safety.battery_reserve_pct or
+                    any(not motor.operational for motor in drone.motors)):
+                self._deferred_motions.pop(node_id, None)
+                if drone.flight_mode in (FlightMode.HOVER, FlightMode.FLYING):
+                    drone.return_to_home("Local battery/motor safety guard")
+                continue
+            if drone.flight_mode == FlightMode.HOVER and node_id in self._deferred_motions:
+                saved = self._deferred_motions.pop(node_id)
+                if (runtime.node.leader is not None and runtime.node.certificate is not None
+                        and runtime.node.has_fresh_quorum()
+                        and saved.get("coordination_epoch") == runtime.node.certificate.epoch):
+                    self._dispatch(drone, saved)
+            if drone.flight_mode != FlightMode.FLYING:
+                continue
+            available = runtime.node.has_fresh_quorum() and runtime.node.leader is not None
+            latency_bad = (self.observed_latency_ms is not None and
+                           self.observed_latency_ms > self.motion_safety.latency_limit_ms)
+            if not available or latency_bad:
+                self._deferred_motions.pop(node_id, None)
+                drone.target_position = None
+                drone.flight_mode = FlightMode.HOVER
+                with self._lock:
+                    self.events.append({
+                        "drone_id": node_id, "kind": "continuous_safety_hold",
+                        "accepted": False,
+                        "reason": "quorum_unavailable" if not available else "latency_limit_exceeded",
+                    })
+
+    def _safety_loop(self):
+        while not self._safety_stop.wait(0.12):
+            try:
+                self.safety_sweep()
+            except Exception:
+                # Keep the flight-simulation monitor alive even if an
+                # unrelated optional telemetry field is temporarily invalid.
+                with self._lock:
+                    self.events.append({"kind": "safety_monitor_error", "accepted": False})
 
     def stop_node(self, node_id: int) -> None:
         """Crash a simulated node and stop its UDP channel and physical model."""
         runtime = self._runtimes[node_id]
         runtime.stop()
         self.drones[node_id].stop()
+        self._deferred_motions.pop(node_id, None)
         self._owned_drone_ids.discard(node_id)
 
     def leader(self) -> Optional[int]:
@@ -158,6 +260,12 @@ class DroneMeshSimulation:
             # while other nodes are still waiting for its heartbeat lease to expire.
             candidate_runtime = self._runtimes.get(node.leader)
             if candidate_runtime is None or candidate_runtime._stop.is_set():
+                continue
+            # A majority of followers reporting a leader is insufficient if
+            # that leader itself lacks a valid certificate or fresh quorum.
+            candidate = candidate_runtime.node
+            if (candidate.leader != node.leader or candidate.certificate is None
+                    or not candidate.has_fresh_quorum()):
                 continue
             if not node.has_fresh_quorum():
                 continue
@@ -175,11 +283,150 @@ class DroneMeshSimulation:
             time.sleep(0.05)
         return None
 
+    def get_velocity_advisory(self, node_id: int) -> dict:
+        """Read optional validated model advice without commanding drone motion."""
+        drone = self.drones[int(node_id)]
+        features = [
+            drone.battery_level, drone.signal_strength,
+            drone.processing_capability, drone.current_position.z,
+            drone.velocity.x, drone.velocity.y, drone.velocity.z,
+        ]
+        return velocity_advisory(getattr(drone, "ml_trainer", None), features,
+                                 max_speed_mps=float(drone.MAX_SPEED))
+
+    def measure_peer_rtt(self, target_id: int, timeout_s: float = 2.0) -> float:
+        """Real UDP roundtrip observation, NOT synthetic C++<->Python bridge RTT."""
+        leader_id = self.leader()
+        if leader_id is None or target_id == leader_id or target_id not in self._runtimes:
+            raise ValueError("Need certified leader and a distinct registered target")
+        node = self._runtimes[leader_id].node
+        node.measured_peer_rtt_ms.pop(target_id, None)
+        probe = node.start_latency_probe(target_id)
+        self._transports[leader_id].send(probe, recipient=target_id)
+        until = time.monotonic() + timeout_s
+        while time.monotonic() < until:
+            if target_id in node.measured_peer_rtt_ms:
+                return node.measured_peer_rtt_ms[target_id]
+            time.sleep(0.01)
+        raise TimeoutError("No authenticated RTT reply from target")
+
+    def add_simulated_obstacle(self, xyz: tuple[float, float, float], radius_m: float) -> None:
+        self.motion_safety.add_obstacle(xyz, radius_m)
+
+    def set_observed_latency_ms(self, latency_ms: Optional[float]) -> None:
+        """Accept a genuinely observed RTT from a diagnostic source, if available.
+
+        No default synthetic bridge timings are treated as measurements.
+        """
+        if latency_ms is not None and (
+            not math.isfinite(float(latency_ms)) or float(latency_ms) < 0
+        ):
+            raise ValueError("Invalid latency observation")
+        self.observed_latency_ms = None if latency_ms is None else float(latency_ms)
+
+    def audit_event(self, payload: dict) -> dict:
+        """Quorum-commit an intent in this simulation's independently signed log.
+
+        This coordinator collects votes in memory; it is NOT a separate
+        peer-to-peer ledger consensus transport or proof of BFT liveness.
+        """
+        leader_id = self.leader()
+        if leader_id is None:
+            raise PermissionError("No certified quorum leader for audit event")
+        local = self._runtimes[leader_id].node
+        cert = local.certificate
+        if cert is None or not local.has_fresh_quorum():
+            raise PermissionError("Audit leader certificate or quorum expired")
+        active = [
+            i for i, runtime in self._runtimes.items()
+            if not runtime._stop.is_set() and
+            i in local.health and
+            0 <= local.clock() - local.health[i][1] <= local.timeout_s
+        ]
+        if len(active) < local.quorum:
+            raise PermissionError("Insufficient live members to sign audit event")
+        # Sync a recovering follower before asking it to sign the next height.
+        for i in active:
+            if i != leader_id and self.audit_ledgers[i].height < self.audit_ledgers[leader_id].height:
+                self.audit_ledgers[i].synchronize(self.audit_ledgers[leader_id].commits)
+        proposal = self.audit_ledgers[leader_id].propose(dict(payload), cert.to_dict())
+        ballots = [self.audit_ledgers[i].vote(proposal) for i in active]
+        if len(ballots) < local.quorum:
+            raise PermissionError("Insufficient quorum audit approvals")
+        for i in active:
+            if not self.audit_ledgers[i].commit(proposal, ballots):
+                raise RuntimeError("Audit ledger rejected certified commit")
+        return {
+            "height": self.audit_ledgers[leader_id].height,
+            "hash": proposal["hash"], "approvals": len(ballots),
+            "quorum": local.quorum, "author": leader_id,
+        }
+
+    def reconcile_audit(self, node_id: int) -> int:
+        """Catch an offline replica up from the current certified leader."""
+        leader_id = self.leader()
+        if leader_id is None:
+            raise PermissionError("No certified quorum for audit recovery")
+        return self.audit_ledgers[node_id].synchronize(
+            self.audit_ledgers[leader_id].commits)
+
+    def localize_acoustic(
+        self, signals: dict, sample_rate_hz: float,
+        clock_uncertainty_s: Optional[float] = None,
+        latency_ms: float = 0.0,
+    ) -> dict:
+        """Estimate sound-source XY; never auto-command a physical drone."""
+        positions = {i: (d.current_position.x, d.current_position.y)
+                     for i, d in self.drones.items()}
+        result = self.acoustic_tracker.localize(
+            signals, positions, sample_rate_hz, latency_ms, 280.0,
+            clock_uncertainty_s=clock_uncertainty_s,
+        )
+        if result.get("detected") and result.get("confidence", 0.0) >= 0.65:
+            if self.leader() is not None:
+                result["audit"] = self.audit_event({
+                    "kind": "acoustic_source_observation",
+                    "source_xy": result["source_position"],
+                    "tdoa_residual_rmse_m": result["tdoa_residual_rmse_m"],
+                    "clock_sync_verified": result["clock_sync_verified"],
+                })
+        return result
+
+    def localize_receiver_from_beacons(
+        self, drone_id: int, beacon_positions: dict,
+        scheduled_emissions_s: dict, measured_arrivals_s: dict,
+        relative_schedule_uncertainty_s: float,
+    ) -> dict:
+        """Estimate simulated drone XY from known synchronized acoustic anchors.
+
+        Never mutate Drone.current_position or issue any flight command.
+        """
+        if drone_id not in self.drones or self._runtimes[drone_id]._stop.is_set():
+            raise ValueError("Receiver is not an active registered drone")
+        result = estimate_receiver_xy(
+            beacon_positions, scheduled_emissions_s, measured_arrivals_s,
+            relative_schedule_uncertainty_s,
+        )
+        if result.get("localized") and self.leader() is not None:
+            result["audit"] = self.audit_event({
+                "kind": "beacon_receiver_xy_observation",
+                "receiver_id": drone_id,
+                "estimate": result["receiver_position"],
+                "reference_frame": result["reference_frame"],
+                "tdoa_residual_rmse_m": result["tdoa_residual_rmse_m"],
+            })
+        return result
+
     def command_formation(self, pattern: str, leader_position: tuple[float, float, float],
                           heading_xy: tuple[float, float], spacing_m: float = 12.0) -> int:
         leader_id = self.leader()
         if leader_id is None:
             raise PermissionError("No quorum-certified leader available")
+        self.audit_event({
+            "kind": "formation_intent", "pattern": pattern,
+            "leader_position": list(leader_position),
+            "heading_xy": list(heading_xy), "spacing_m": float(spacing_m),
+        })
         self._runtimes[leader_id].broadcast_action({
             "kind": "formation", "pattern": pattern,
             "leader_position": list(leader_position),
@@ -208,6 +455,10 @@ class DroneMeshSimulation:
         assigned_ids = {detail["task_id"] for detail in command_map.values()}
         unassigned = sorted(task_id for task_id in tasks if task_id not in assigned_ids)
         if command_map:
+            self.audit_event({
+                "kind": "task_allocation_intent",
+                "assignments": command_map, "unassigned": unassigned,
+            })
             self._runtimes[leader_id].broadcast_action({
                 "kind": "task_assignment",
                 "assignments": command_map,
@@ -224,8 +475,13 @@ class DroneMeshSimulation:
                 transport.close()
             return
         self.running = False
+        self._safety_stop.set()
+        if self._safety_thread is not None:
+            self._safety_thread.join(timeout=2.0)
+            self._safety_thread = None
         for runtime in self._runtimes.values():
             runtime.stop()
+        self._deferred_motions.clear()
         for node_id in list(self._owned_drone_ids):
             self.drones[node_id].stop()
             self._owned_drone_ids.discard(node_id)

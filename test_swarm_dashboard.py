@@ -17,6 +17,13 @@ class DashboardTests(unittest.TestCase):
         dashboard = MeshDashboard(auto_start=False)
         try:
             self.assertEqual(dashboard.table.rowCount(), 4)
+            self.assertTrue(hasattr(dashboard, "audit_label"))
+            self.assertTrue(hasattr(dashboard, "acoustic_button"))
+            self.assertTrue(hasattr(dashboard, "beacon_button"))
+            self.assertTrue(hasattr(dashboard, "rtt_button"))
+            self.assertFalse(dashboard.acoustic_button.isEnabled())
+            self.assertFalse(dashboard.beacon_button.isEnabled())
+            self.assertFalse(dashboard.rtt_button.isEnabled())
             self.assertFalse(dashboard.formation_button.isEnabled())
             self.assertFalse(dashboard.tasks_button.isEnabled())
             self.assertIn("no certified quorum", dashboard.leader_label.text())

@@ -13,32 +13,24 @@ from unittest import mock
 from swarm_deployment import load_member, provision_members
 
 
-def _free_port_block(count=4):
-    for _ in range(35):
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
-            probe.bind(("127.0.0.1", 0))
-            first = probe.getsockname()[1]
-        if first < 1024 or first + count >= 65000:
-            continue
-        sockets = []
-        try:
-            for port in range(first, first + count):
-                item = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                item.bind(("127.0.0.1", port))
-                sockets.append(item)
-            return first
-        except OSError:
-            continue
-        finally:
-            for item in sockets:
-                item.close()
-    raise RuntimeError("Cannot reserve contiguous UDP ports")
+def _free_ports(count=4):
+    """Ask the OS for available UDP ports; no contiguity assumption on Windows."""
+    sockets = []
+    try:
+        for _ in range(count):
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.bind(("127.0.0.1", 0))
+            sockets.append(sock)
+        return [sock.getsockname()[1] for sock in sockets]
+    finally:
+        for sock in sockets:
+            sock.close()
 
 
 class ProvisioningTests(unittest.TestCase):
     def test_bundles_are_member_scoped_and_refuse_overwrite(self):
         with tempfile.TemporaryDirectory() as tmp:
-            members = provision_members(Path(tmp) / "fleet", 4, _free_port_block())
+            members = provision_members(Path(tmp) / "fleet", 4, 33000, ports=_free_ports())
             self.assertEqual(len(members), 4)
             roster = []
             for i, directory in enumerate(members, 1):
@@ -49,11 +41,11 @@ class ProvisioningTests(unittest.TestCase):
                 roster.append(node.roster)
             self.assertTrue(all(roster[0] == item for item in roster))
             with self.assertRaises(FileExistsError):
-                provision_members(Path(tmp) / "fleet", 4, _free_port_block())
+                provision_members(Path(tmp) / "fleet", 4, 33000, ports=_free_ports())
 
     def test_tampered_membership_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
-            directory = provision_members(Path(tmp) / "fleet", 4, _free_port_block())[0]
+            directory = provision_members(Path(tmp) / "fleet", 4, 33000, ports=_free_ports())[0]
             config = directory / "member.json"
             data = json.loads(config.read_text(encoding="utf-8"))
             data["roster"]["2"] = "00" * 32
@@ -65,7 +57,7 @@ class ProvisioningTests(unittest.TestCase):
 
     def test_operator_signature_rejects_modified_peer_addresses(self):
         with tempfile.TemporaryDirectory() as tmp:
-            path = provision_members(Path(tmp) / "fleet", 4, _free_port_block())[0]
+            path = provision_members(Path(tmp) / "fleet", 4, 33000, ports=_free_ports())[0]
             record_path = path / "member.json"
             record = json.loads(record_path.read_text(encoding="utf-8"))
             record["addresses"]["2"][1] += 7
@@ -77,7 +69,7 @@ class ProvisioningTests(unittest.TestCase):
 
     def test_external_authority_pin_refuses_untrusted_bundle(self):
         with tempfile.TemporaryDirectory() as tmp:
-            path = provision_members(Path(tmp) / "fleet", 4, _free_port_block())[0]
+            path = provision_members(Path(tmp) / "fleet", 4, 33000, ports=_free_ports())[0]
             with mock.patch.dict(
                 os.environ, {"SWARM_MESH_AUTHORITY_PUB_HEX": "ff" * 32},
             ):
@@ -111,7 +103,7 @@ class SeparateProcessTests(unittest.TestCase):
     def test_four_os_processes_elect_failover_and_rejoin(self):
         processes = []
         with tempfile.TemporaryDirectory() as tmp:
-            members = provision_members(Path(tmp) / "fleet", 4, _free_port_block())
+            members = provision_members(Path(tmp) / "fleet", 4, 33000, ports=_free_ports())
             script = str(Path(__file__).resolve().parent / "swarm_deployment.py")
 
             def start_node(node_id):
