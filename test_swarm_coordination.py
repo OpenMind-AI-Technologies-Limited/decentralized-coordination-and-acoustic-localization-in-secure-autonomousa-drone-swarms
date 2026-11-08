@@ -209,5 +209,39 @@ class RuntimeIntegrationTests(unittest.TestCase):
                 transport.close()
 
 
+class RecoveryTests(unittest.TestCase):
+    def test_crashed_leader_is_replaced_by_three_survivors(self):
+        identities = [SwarmIdentity(i) for i in range(1, 5)]
+        roster = {i.node_id: i.public_bytes() for i in identities}
+        key = os.urandom(32)
+        transports = [UdpPeerTransport(i.node_id, ("127.0.0.1", 0)) for i in identities]
+        runtimes = []
+        try:
+            for transport in transports:
+                transport.configure_peers({p.node_id: p.address for p in transports if p != transport})
+            for j, ident in enumerate(identities):
+                report = HealthReport(99 - 10*j, 90, 90)
+                node = MeshNode(ident, roster, key, heartbeat_timeout_s=1.0)
+                runtime = MeshRuntime(node, transports[j],
+                                      health_provider=lambda h=report: (h, (0.0, 0.0, 10.0)),
+                                      heartbeat_interval_s=0.12, election_retry_s=0.5)
+                runtimes.append(runtime)
+                runtime.start()
+            deadline = time.monotonic() + 4.0
+            while time.monotonic() < deadline and not all(rt.node.leader == 1 for rt in runtimes):
+                time.sleep(0.05)
+            self.assertTrue(all(rt.node.leader == 1 for rt in runtimes))
+            runtimes[0].stop()
+            deadline = time.monotonic() + 5.0
+            while time.monotonic() < deadline and not all(rt.node.leader == 2 for rt in runtimes[1:]):
+                time.sleep(0.05)
+            self.assertEqual([rt.node.leader for rt in runtimes[1:]], [2, 2, 2])
+        finally:
+            for runtime in runtimes:
+                runtime.stop()
+            for transport in transports:
+                transport.close()
+
+
 if __name__ == "__main__":
     unittest.main()
