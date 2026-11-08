@@ -60,6 +60,8 @@ jobs:
             swarm_transport.py \
             swarm_runtime.py \
             mesh_demo.py \
+            mesh_simulation.py \
+            test_mesh_simulation.py \
             test_swarm_coordination.py \
             test_ledger_and_acoustic.py \
             tests/gui_smoke_test.py
@@ -71,7 +73,8 @@ jobs:
             --junitxml=pytest-results.xml \
             test_dynamic_features.py \
             test_ledger_and_acoustic.py \
-            test_swarm_coordination.py
+            test_swarm_coordination.py \
+            test_mesh_simulation.py
 
       - name: Upload Python test artifacts
         if: always()
