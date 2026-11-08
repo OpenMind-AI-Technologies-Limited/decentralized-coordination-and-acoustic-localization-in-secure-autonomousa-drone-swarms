@@ -35,6 +35,9 @@ class AuditLedgerTests(unittest.TestCase):
         self.assertTrue(all(x.height == 1 for x in self.logs))
         self.assertTrue(all(x.consistent_with(self.logs[0]) for x in self.logs))
         self.assertTrue(self.logs[1].commit(proposal, votes))  # Idempotent replay.
+        forged = copy.deepcopy(votes)
+        forged[0]["signature_hex"] = "00" * 64
+        self.assertFalse(self.logs[1].commit(proposal, forged))
 
     def test_no_quorum_and_forged_vote_rejected(self):
         proposal, votes = self.create_record()
