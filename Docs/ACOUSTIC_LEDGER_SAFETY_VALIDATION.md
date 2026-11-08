@@ -84,8 +84,24 @@ to the existing simulated `Drone.goto()` route it checks:
 
 A background simulation safety loop holds active motion on quorum loss or
 an excessive observed RTT and invokes local return-to-home behavior on
-battery/motor degradation. It never automatically arms or commands physical
-UAV hardware.
+battery/motor degradation. Unsafe direct routes near another member are
+rerouted to a bounded safe elevated waypoint **only if the waypoint itself
+passes the same safety checks**; the final destination is independently
+re-evaluated with fresh state after the waypoint. It never automatically
+arms or commands physical UAV hardware.
+
+### Trained telemetry regression validation
+
+`swarm_model_validation.py` checks the existing per-drone
+`PhysicalMLTrainer` model's held-out regression MSE, minimum validation
+sample count and finite coefficients. A passing model can produce a
+bounded **velocity advisory** through
+`DroneMeshSimulation.get_velocity_advisory(node_id)`. It cannot issue a
+command or override the deterministic safety gate.
+
+This is **not** a trained collision-risk classifier, validated autonomous
+controller or proof of real flight performance. The existing obstacle risk
+model remains explicitly heuristic.
 
 ### Latency evidence
 
@@ -101,8 +117,9 @@ bridge values are **not** silently fed to the safety threshold.
 ```bash
 python -m pytest -q \
   test_acoustic_quality.py test_acoustic_benchmark.py \
-  test_quorum_audit.py test_swarm_safety.py test_swarm_resilience.py \
-  test_ledger_and_acoustic.py test_mesh_simulation.py
+  test_quorum_audit.py test_ledger_integrity.py \
+  test_swarm_safety.py test_swarm_model_validation.py \
+  test_swarm_resilience.py test_ledger_and_acoustic.py test_mesh_simulation.py
 python main.py --mesh-gui
 python main.py --mesh-simulation
 ```
