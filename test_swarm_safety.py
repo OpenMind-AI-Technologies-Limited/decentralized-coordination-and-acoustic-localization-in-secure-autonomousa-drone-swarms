@@ -42,7 +42,12 @@ class SimulationSafetyTests(unittest.TestCase):
     def test_neighbor_minimum_separation(self):
         decision = self.assess((10, 0, 10), {2: (12, 0, 10)})
         self.assertFalse(decision.allowed)
-        self.assertEqual(decision.reason, "target_too_close_to_neighbor")
+        self.assertEqual(decision.reason, "path_too_close_to_neighbor")
+
+    def test_segment_collision_even_when_destination_is_far(self):
+        decision = self.assess((30, 0, 10), {2: (10, 0, 10)})
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, "path_too_close_to_neighbor")
 
     def test_heuristic_obstacle_predicts_unsafe_path(self):
         self.guard.add_obstacle((8, 0, 10), 4)
