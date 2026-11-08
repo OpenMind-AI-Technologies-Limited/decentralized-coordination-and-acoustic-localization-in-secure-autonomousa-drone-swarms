@@ -6,7 +6,7 @@
 #   Developer : Md Shahanur Islam Shagor                                #
 #   Role      : Project Architect & Lead Developer                      #
 #   Version   : 1.0.2                                                   #
-#   Status    : Production Ready                                        #
+#   Status    : Reproducible Research Prototype                                        #
 #                                                                       #
 #   "Protecting the skies with decentralized intelligence."             #
 #                                                                       #
@@ -15,7 +15,41 @@
 
 # Decentralized Coordination and Acoustic Localization in Secure Autonomous Drone Swarms
 
-This is an end-to-end multi-drone swarm platform designed for high-security environments and vision-impaired conditions. The system integrates advanced Decentralized Coordination, Dynamic Obstacle Avoidance, and Acoustic Source Localization to ensure mission success even when GPS or visual data fails.
+This repository contains an experimental UAV-swarm software prototype and controlled simulator components. The opt-in authenticated coordination, acoustic estimators, task allocation and fault-injection workflows have automated software validation; **no real-flight certification, fully proven Byzantine agreement, or field-validated autonomous GNSS-denied navigation is claimed**. The original default GUI and newer simulation-only authenticated mesh are distinct execution paths.
+
+## Reproducible swarm resilience experiments
+
+The software-validation branch includes a seeded experiment harness and raw
+evidence generator, using real signed mesh election code but a **virtual,
+deterministic packet network**. It evaluates N=5/10/20/50, packet loss,
+Byzantine vote withholding/equivocation, tampered envelopes, partitions,
+simulated leader failure, formation separation waypoints, task assignment,
+and synthetic acoustic source and known-beacon receiver localization.
+
+Run the tests and a full exploratory evidence sweep:
+
+```bash
+python -m pip install numpy scipy cryptography pytest
+python -m pytest -q test_swarm_experiments.py
+python swarm_experiment_runner.py --sizes 5 10 20 50 --trials 20 --seed 2026 --figures --out experiment_outputs/swarm
+```
+
+The output contains per-trial CSV/JSON, a SHA-256 manifest, 95% confidence-interval
+summaries, REPORT.md, and optional observed-data PNG/SVG plots. CI also generates 6 repeats per scenario and uploads
+the actual observed files as GitHub Actions artifacts.
+
+These are **not** physical flight, real RF latency, certified BFT liveness,
+measured power use, or field-validated GPS-denied autonomous navigation.
+See [experimental methodology](Docs/SWARM_EXPERIMENT_PROTOCOL.md) for detailed
+scenario definitions, transparent baseline limitations and reproducibility.
+
+## Current manuscript and evidence
+
+**Current research manuscript:** [Reproducible Software Validation of Authenticated UAV Swarm Coordination](research_paper.md). This journal-neutral 27-reference manuscript uses 378 archived synthetic trial rows from experiment revision `78cce082c5acabe68ebc5f76a32872b210308af5`, with visible source attribution and explicit validity limits. The five research figures are stored as text-based SVG files in [figures/](figures/).
+
+**Do not submit the older `Docs/Research-Paper.pdf` as the current evidence-backed manuscript.** It represents an earlier proposal and contains claims not substantiated by these software-validation experiments. The new manuscript replaces its claims; the approved PDF/DOCX manuscript is provided separately as the submission package.
+
+**Submission requirements:** Confirm the target journal, corresponding email, affiliations, funding and interests; disclose overlap with the previously published acoustic conference work and any related manuscripts under review. A DOI for a permanent archived data/software release should be created and added if the journal mandates one.
 
 ## Authenticated distributed mesh (experimental, opt-in)
 

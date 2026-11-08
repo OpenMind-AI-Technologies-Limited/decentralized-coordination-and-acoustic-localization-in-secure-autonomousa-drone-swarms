@@ -1,1247 +1,199 @@
-# A Byzantine-Resilient Decentralized Coordination Framework with Acoustic TDOA Localization for Secure UAV Swarms
+# Reproducible Software Validation of Authenticated UAV Swarm Coordination under Network Faults with Synthetic Acoustic Localization
 
-Decentralized Coordination and Acoustic Localization in Secure Autonomous Drone Swarms
+**Md Shahanur Islam Shagor**  
+Voronezh State University of Forestry and Technologies, Voronezh, Russian Federation  
+ORCID: 0009-0003-7730-3202  
+Corresponding author: Md Shahanur Islam Shagor (submission-system email to be supplied)
 
-Md Shahanur Islam Shagor
+## Abstract
 
-Project Architect & Lead Developer
+Reliable swarm coordination requires authorization of peer commands, predictable responses to communication failures, and reproducible separation of simulated outcomes from field claims. This study evaluates an openly implemented, fixed-membership unmanned aerial vehicle (UAV) swarm software prototype with Ed25519-authenticated membership, AES-256-GCM protected datagrams, quorum-certified leader authority, health-weighted task assignment, geometric formation waypoints and two distinct synthetic acoustic localization modules. The evaluation uses the actual software signing and election routines in a seeded discrete-event packet network, without real radio hardware or physical aircraft. Four fleet sizes (N = 5, 10, 20 and 50) and eight election scenarios are evaluated with six repetitions per setting. The archived GitHub Actions artifact contains 378 per-trial observations across 63 settings, including formation, task-allocation, sound-source, and known-beacon receiver localization scenarios. All six healthy election trials at each fleet size obtained the expected certified leader; near-even partitions produced no quorum certificate in the tested runs. At N = 50, healthy election packet transmissions averaged 9,800 per repetition, illustrating the nontrivial communication scaling of all-to-all signed gossip. Under synthetic acoustic timing jitter, the known-beacon receiver estimator yielded mean conditional XY errors of 0.044 m at 100 microseconds and 0.153 m at 350 microseconds; those values depend on a known synchronized reference frame and are not evidence of autonomous GNSS-denied navigation. We release a reproducibility protocol, raw trials, clearly defined baselines, uncertainty estimates, and descriptive limitations. The demonstrated contribution is inspectable software validation, not formal Byzantine agreement, field-proven localization or flight-safety certification.
 
-Secure Autonomous Drone Swarm Research Laboratory
+**Keywords:** UAV swarm; reproducible simulation; authenticated control; quorum certificate; network partition; Byzantine fault injection; formation waypoints; task allocation; time-difference-of-arrival; software validation.
 
-Abstract
+## 1. Introduction
 
-This paper presents a fully implemented and experimentally validated decentralized autonomous drone swarm management system designed for operation in GPS-denied, vision-impaired, and electronically contested environments. The completed platform integrates six tightly coupled subsystems: a Multi-Criteria Suitability Scoring (MCSS)–based leader election protocol providing Byzantine Fault Tolerance for agents with rapid failover capability; an AES-256-GCM secured peer-to-peer communication mesh with PBKDF2-derived swarm keys and replay protection; a machine learning–enhanced dynamic obstacle avoidance engine combining collision-cone modeling, second-order kinematic prediction, and acceleration-constrained velocity blending; a GCC-PHAT–based acoustic TDOA localization module enabling GPS-independent source estimation with meter-level accuracy; a tamper-evident distributed flight logging framework (Flying Ledger) utilizing Ed25519 signatures and SHA3-256 cryptographic chaining; and a C++-implemented Differential Immune System supporting real-time motor degradation detection, adaptive thrust redistribution, and dynamic PID retuning for resilience against partial actuator failure. All mathematical models are directly mapped to production-level source code, ensuring full traceability between theoretical formulation and system implementation, and experimental evaluation confirms robust performance across fault tolerance, secure communication, and navigation stability metrics. Simulation results further demonstrate stable flight behavior under up to 30% motor degradation while maintaining end-to-end control latency below 50 milliseconds.
+Unmanned aerial vehicles operating as a cooperating group must communicate, assign responsibilities and withstand partial network or actuator degradation. Contemporary surveys describe diverse coordination architectures but also persistent gaps involving secure group membership, navigation under degraded GNSS, and reliable multi-agent control [1–5]. In adversarial settings, authenticating an instruction is only one requirement: the sender must also hold contemporaneous authority to issue that instruction, and unreachable subgroups must not independently assume global leadership [2,6,7].
 
-Index Terms - AES-256-GCM, acoustic localization, Byzantine fault tolerance, collision-cone modeling, decentralized control, differential immune system, distributed ledger, drone swarm systems, Ed25519, GCC-PHAT, GPS-denied navigation, leader election, MAVLink, obstacle avoidance, SHA3-256, time difference of arrival (TDOA).
+The experimental problem addressed here is narrower than safe autonomous flight. A research prototype includes separately executable peer nodes and a simulation-only control adapter. Its default legacy graphical flight-manager path is not equated with the new authenticated protocol. The authenticated path binds per-member signatures to encrypted datagrams, protects against duplicate packets, and requires a signed quorum certificate for command authority. A local formation policy and health-aware greedy task allocator compute waypoints that remain subject to software safety checks. Distinct acoustic modules localize an unknown **sound source** using known sensor coordinates, and a simulated **receiver** using known synchronized beacon locations. These computations cannot be interchanged as evidence that a drone autonomously knows its position without any external reference [4,18,19].
 
-Source Code: The complete implementation of the framework, including the C++ hardware abstraction layer and Python swarm intelligence modules, is available at: https://github.com/smshagor-dev/decentralized-coordination-and-acoustic-localization-in-secure-autonomousa-drone-swarms
+The purpose of this article is to make implementation-to-evidence claims auditable and to test representative failure modes using a stable experiment matrix. A related conference work on acoustic localization was reported previously [24]. The current contribution differs by auditing cryptographic coordination, comparative waypoint and task assignment behavior, cross-platform software tests, and explicit uncertainty handling rather than claiming a new flight-proven acoustic navigation system. No text or figures from that conference item are reproduced here. Related work and any simultaneously submitted swarm-security manuscripts must be disclosed to an editor before submission.
 
-I. INTRODUCTION
+We ask whether (RQ1) the software obtains its expected leader certificate under specified delivery and adversarial scenarios, (RQ2) no leader is certified when quorum is unavailable, (RQ3) the waypoint-separation heuristic reduces hypothetical close waypoint pairs under synthetic perturbation, (RQ4) health-aware assignment avoids ineligible simulated nodes relative to a naive baseline, and (RQ5) synthetic acoustic estimates behave predictably as input noise grows. These are empirical software questions. They do not assert proof of protocol safety under arbitrary Byzantine scheduling or guarantee closed-loop physical flight stability.
 
-1.1 Background and Motivation
+## 2. Related work and positioning
 
-Unmanned Aerial Vehicle (UAV) swarm systems have evolved from experimental laboratory platforms into mission-critical tools across defense surveillance, urban search-and-rescue, disaster response, precision agriculture, and infrastructure inspection. Contemporary implementations including commercial swarm platforms and research frameworks built upon middleware such as ROS have significantly advanced coordination and autonomy capabilities. However, most existing architectures remain dependent on centralized control assumptions, persistent GNSS availability, reliable communication channels, and benign electromagnetic conditions. These design assumptions introduce systemic vulnerabilities that become pronounced in GPS-denied environments, electronically contested airspace, smoke-obscured or low-visibility conditions, and adversarial cyber contexts.
+Secure UAV-swarm communication has motivated research in dynamic key agreement, physically bound secrets, blockchain-assisted authentication and distributed trust [2,7–9]. Such protocols cover threat surfaces that a fixed, locally provisioned roster does not: online member revocation, compromised-key recovery, dynamic enrollment and adversarial radio channels. The present prototype should not be compared as a cryptographically equivalent substitute for these systems. Recent UAV-swarm Byzantine-defense and denial-of-service papers also examine attacks on learning and control that differ from our authenticated vote injection [6,25–27].
 
-The present work addresses these limitations through the design and full implementation of a decentralized swarm architecture engineered for operational resilience under adverse conditions. Each architectural decision including the adoption of Ed25519 digital signatures for efficient cryptographic verification and the use of GCC-PHAT–based acoustic cross-correlation for robust time-difference-of-arrival estimation was selected to mitigate identified failure modes in conventional swarm systems. The resulting framework integrates six interdependent subsystems that collectively enhance fault tolerance, secure communication, navigation robustness, and actuator resilience, forming a cohesive production-level platform validated through experimental implementation.
+Work on fault-tolerant formation includes distributed model predictive control, Lyapunov analysis, actuator-fault compensation and implemented flight-control techniques [10–14]. Our waypoint-only repulsion calculation lacks those dynamics and guarantees, so its appropriate baseline is the same geometric targets *before adjustment*, not a published closed-loop controller. Studies of multi-robot task allocation propose optimization, auction and temporal methods [15–17]; our deterministic greedy score is evaluated against a deliberately simple node-ID allocator to clarify eligibility behavior. It is not claimed to be globally optimal or superior to state-of-the-art scheduling.
 
-1.2 Design Philosophy
+Acoustic ranging and localization have an established signal-processing foundation in generalized cross correlation and time-difference-of-arrival (TDOA) [18,19]. Newer GNSS-denied UAV reviews emphasize that genuine navigation requires reference availability, synchronization, uncertainty management and motion-aware sensor fusion [4]. Our unknown-source experiment uses fixed sensor XY coordinates; our receiver experiment assumes four known beacon XY coordinates and a calibrated emission schedule. Even if satellite data are absent from a solver call, that alone does not validate autonomous GNSS-denied flight.
 
-The architectural philosophy underlying this work is grounded in decentralized resilience and multi-layered redundancy. The system is designed such that no single node possesses unilateral authority capable of compromising overall swarm functionality. Similarly, no single sensing modality exclusively governs navigation, and no individual software layer independently determines system safety. Instead, the framework adopts a distributed decision-making model in which control authority, sensing inputs, and fault mitigation mechanisms are hierarchically and functionally partitioned.
+The authentication primitives used here follow established algorithm specifications rather than introducing new cryptography: Ed25519 signatures [20] and AES-GCM authenticated encryption [21]. Quorum certificates resemble a component of Byzantine replication, but full Byzantine agreement requires additional locking, view-change, state-machine and network assumptions, as illustrated by HotStuff and PBFT [22,23]. We therefore call our software **quorum-certified coordination**, not a formally proven Byzantine-resilient consensus protocol.
 
-This layered design follows a concentric redundancy principle, where successive protective mechanisms compensate for potential failures in outer layers. Communication security, leader reconfiguration, sensor fusion, actuator health monitoring, and flight logging operate as mutually reinforcing subsystems. Through this architecture, localized failures whether at the hardware, software, or network level are contained without propagating into system-wide collapse, thereby enhancing operational robustness in contested or degraded environments.
+## 3. Implemented software architecture
 
-II. PROBLEM STATEMENT
+Figure 1 distinguishes authenticated mesh code from the experiment's virtual transport and evidence pipeline. The GitHub repository exposes the authenticated coordination implementation (`swarm_mesh.py`), member and vote persistence (`swarm_identity_store.py`), loopback UDP transport (`swarm_transport.py`), independent-process deployment (`swarm_deployment.py`), formation targets (`swarm_formation.py`), greedy tasks (`swarm_tasks.py`), and an opt-in existing-Drone simulation adapter (`mesh_simulation.py`). The separate legacy `SwarmManager`/GUI controller is not used as cryptographic evidence for the opt-in path. The second evaluation layer adds `swarm_network_experiments.py`, `swarm_geometry_experiments.py`, `swarm_acoustic_experiments.py` and a CSV/JSON experiment runner.
 
-The development of the proposed decentralized swarm architecture is motivated by six critical and well-documented limitations in contemporary autonomous UAV swarm systems. These challenges span operational reliability, environmental robustness, distributed coordination, communication security, actuator resilience, and audit integrity. Existing swarm implementations often rely on centralized coordination, persistent GNSS availability, unimodal sensing assumptions, or trusted network environments design constraints that introduce vulnerabilities under adversarial or degraded conditions.
+![Figure 1. Software architecture and experimental boundary.](figures/fig1_architecture.svg)
 
-This work formally characterizes these six bottlenecks and presents a structured architectural response in which each identified limitation is addressed through a corresponding subsystem within the integrated framework. By mapping specific operational failure modes to targeted algorithmic and cryptographic mechanisms, the system establishes a traceable relationship between identified swarm vulnerabilities and implemented mitigation strategies.
+### 3.1 Identity, command authority and fault model
 
-A. Single Point of Failure and Centralized Fragility
+Each registered node holds an Ed25519 key pair. Signed packets carry node identity, boot-session ID, sequence number, protocol epoch and payload; AES-256-GCM provides authenticated transport encryption. A receiver checks known membership, digital signature, freshness window and replay state. Persistent local ballot journals are fsynced before a vote signature is produced. These safeguards limit replay and restart equivocation but do not establish resistance to an adversary that extracts a private key or compromises more than the assumed budget. Membership is fixed and registered out of band.
 
-Conventional UAV swarm architectures frequently depend on a centralized Ground Control Station (GCS) or a statically designated master node for coordination. Such dependency introduces a Single Point of Failure (SPOF), a well-established vulnerability in distributed systems that increases susceptibility to crash faults and Byzantine behaviors [49]. Compromise or malfunction of the coordinating node whether due to hardware failure, communication disruption, or adversarial interference can significantly degrade or halt collective swarm operation. Moreover, many deployed commercial swarm implementations lack a dynamic, merit-based re-election mechanism capable of autonomously determining the most suitable successor in the event of leader failure.
+For a fleet of N nodes, the configured fault budget is f = floor((N - 1) / 3), and a quorum certificate requires q = N - f signatures. The evaluated N values imply (N, f, q) = (5, 1, 4), (10, 3, 7), (20, 6, 14) and (50, 16, 34). This is a chosen signature threshold; it is not itself a proof of asynchronous Byzantine agreement. The multi-criteria suitability score combines normalized battery, motor health and link quality with weights 0.45, 0.35 and 0.20, respectively. A signed certificate binds a candidate and epoch. Expired leader authority is fenced and the simulation adapter refuses direct network-triggered arming. The current security analysis is for a static roster and representative tested packet schedules; adaptive cross-view attacks, malicious health reports and dynamic reconfiguration remain open.
 
-To address this limitation, the proposed architecture integrates a Multi-Criteria Suitability Scoring (MCSS) leader election protocol supported by the Flying Ledger, acoustic TDOA telemetry consistency, and the Differential Immune System’s health diagnostics. The MCSS mechanism continuously evaluates battery state, motor integrity, communication link stability, and system latency across active nodes. Upon detection of leader failure, the protocol performs decentralized scoring and promotes the most suitable surviving drone within approximately 1.2 seconds, thereby preserving coordinated mission execution without reliance on a fixed authority node.
+### 3.2 Geometric formation and scheduling
 
-B. GPS Dependency and Signal Spoofing in Contested Zones
+Formation targets support line, V, circle and grid configurations using a specified leader position, heading and spacing. A local neighbor-repulsion heuristic can propose an adjusted waypoint if sampled relative positions are close. A *waypoint pair* with Euclidean separation less than 8 m is counted as a hypothetical proximity violation. This is not a physical collision or a verified collision-free path. We record both proximity and distortion of the original formation references so a lower close-pair count is not presented as cost-free improvement.
 
-Contemporary UAV navigation systems rely predominantly on Global Navigation Satellite Systems (GNSS), particularly GPS, for positioning and synchronization. However, GPS signals reach the Earth's surface at approximately −130 dBm, rendering them highly susceptible to intentional jamming using low-cost radio frequency transmitters. In contested or structurally complex environments including urban canyons, dense forest canopies, mountainous terrain, indoor facilities, and electronic warfare scenarios GNSS signals may become intermittent, degraded, or entirely unavailable [9], [10]. In addition to signal denial, GPS spoofing attacks where a falsified but stronger satellite signal is broadcast pose a significant threat by misleading autonomous systems into erroneous navigation states without immediate detection.
+Task assignment rejects nodes with battery below 30%, motor health below 75%, or link quality below 40%. Qualified nodes receive tasks through a deterministic greedy function minimizing an explicit travel-distance-plus-health-penalty score, with at most one task per node in these trials. The baseline maps sorted tasks onto sorted node identifiers and ignores health and distance. Straight-line assignment distance is reported in meters and must not be interpreted as actual energy, mission duration or actuator workload.
 
-To mitigate this vulnerability, the proposed architecture incorporates a GCC-PHAT–based acoustic Time Difference of Arrival (TDOA) localization subsystem that operates independently of satellite infrastructure. By estimating inter-drone acoustic propagation delays through generalized cross-correlation with phase transform weighting, the system computes two-dimensional source positions under GPS-denied conditions. Experimental validation demonstrates meter-level localization accuracy (sub-3 m) in controlled zero-visibility scenarios, providing an alternative positioning mechanism resilient to GNSS jamming and spoofing attacks.
+### 3.3 Two separate acoustic estimators
 
-C. Sensor Failure in Vision-Denied Environments
+The unknown-sound-source experiment uses four fixed microphones and generates delayed sampled impulses according to geometric propagation times, with additive synthetic sample noise. Source XY position is estimated from inter-sensor delays using cross correlation and nonlinear least squares. The known-beacon receiver experiment instead generates arrival timestamps from four externally known synchronized beacons plus a common receiver clock offset. Emission schedule correction removes that offset, after which a nonlinear TDOA solver estimates receiver XY. Both experiments use an assumed speed of sound of 343 m/s; neither models rotor noise, reflection, outdoor temperature gradients, moving microphones, receiver attitude, multipath or field clock drift.
 
-Many autonomous UAV systems depend heavily on optical sensing modalities, including RGB cameras, LiDAR, and stereo vision, for perception and navigation. However, these sensors experience significant performance degradation in environments characterized by dense fog, heavy smoke, low illumination, airborne particulates, or featureless and highly reflective surfaces. Mission scenarios such as search-and-rescue operations in fire-damaged structures, smoke-obscured military environments, subterranean tunnel inspection, and nighttime deployments represent vision-denied conditions where optical perception reliability is substantially reduced [12]. In such settings, the loss of dependable visual feedback can critically impair navigation stability and obstacle detection.
+## 4. Experimental protocol and reproducibility
 
-To address this limitation, the proposed architecture integrates an acoustic tracking subsystem capable of operating independently of ambient light conditions. By leveraging time-difference-of-arrival–based acoustic localization, the system maintains environmental awareness under zero-visibility scenarios. In parallel, the machine learning–driven obstacle avoidance module relies on internally maintained dynamic state representations including obstacle position, velocity, and predicted trajectory allowing navigation continuity without persistent camera input. This multimodal redundancy enhances operational resilience when optical sensing becomes unreliable.
+All reported numbers in this paper are derived from a successfully completed GitHub Actions evidence archive for repository revision `78cce082c5acabe68ebc5f76a32872b210308af5` with manifest seed 2026, Python 3.11.18 on Linux. It contains 378 raw observations, partitioned into 192 election, 96 formation, 48 allocation, 24 receiver and 18 source-localization rows. These rows cover 63 settings; each setting contains six repeated seeded observations. Subsequent optimization or figure-generation commits must be rerun before mixing their measurements with this archived dataset.
 
-D. Lack of Immutable Telemetry and Data Integrity
+The experiment harness uses the actual signing, decryption, election and certificate validation code, but replaces real UDP transport with a seeded discrete-event packet queue that assigns 1–12 ms *virtual* packet delays. It includes a nominal 15% packet-loss scenario with three signed vote retransmission rounds, signed vote withholding and equivocation, corrupted wire packets, partitioned connectivity, and deliberate simulated leader failure. We log transmitted and delivered packets/bytes, rejected envelopes and observed certificate outcomes. A virtual clock is not an RF round-trip-time measurement; host execution time is not an autopilot command latency.
 
-Inter-drone communication in many deployed swarm implementations relies on unsecured channels or lightweight integrity mechanisms, such as basic checksums, which do not provide cryptographic authenticity guarantees. Such configurations expose the network to Man-in-the-Middle (MITM) and replay attacks, where adversaries may inject or retransmit fabricated telemetry packets to influence formation geometry, navigation decisions, or mission trajectories [4], [11]. In the absence of a distributed and tamper-evident logging mechanism, post-mission forensic analysis becomes limited, and establishing regulatory accountability for autonomous decision-making processes becomes significantly more challenging.
+The geometry experiment uses the repository's formation function and adds Gaussian 3D perturbations with standard deviation 6 m to the waypoint positions, measuring original and adjusted positions. The task experiment uses shared generated positions/tasks for the greedy policy and naive baseline, both with and without approximately 20% degraded members. The synthetic receiver study tests 0, 100 and 350 microseconds of arrival jitter and a no-reference case; sound-source impulses are studied at sample-noise levels 0, 0.02 and 0.05. These are deliberately controlled idealized parameter settings rather than representative flight conditions.
 
-To mitigate these vulnerabilities, the proposed architecture incorporates a distributed append-only logging mechanism termed the Flying Ledger. Each telemetry snapshot and command event is hashed using SHA3-256 and digitally signed with Ed25519 to ensure authenticity and integrity. Cryptographic chaining of blocks enables tamper detection, while peer-to-peer replication across swarm nodes prevents loss of audit records due to individual node failure. By combining authenticated communication with distributed ledger principles, the system strengthens resistance against unauthorized telemetry manipulation and enhances post-mission verifiability.
+For binary success fractions, we report two-sided 95% Wilson intervals; for continuous observations with at least two values, we use percentile bootstrap confidence intervals with 500 resamples. The intervals describe variability across six sampled synthetic trials; they do not constitute formal hypothesis tests, statistical guarantees under distribution shift, or independent hardware replication. Missing localization estimates are counted but not assigned zero error. The public raw trials.csv, trials.json, summary.json, manifest.json and REPORT.md form the executable evidence boundary. Independent replication must pin code revision, dependency versions, seed and experimental parameters and should report its own confidence intervals.
 
-E. Actuator Degradation and Lack of Self-Healing
+Table 1 specifies the tested conditions, dependent metrics and the boundary separating simulated observations from any unmeasured physical behavior.
 
-During real-world UAV operations, rotor degradation arising from mechanical wear, foreign object impact, manufacturing variability, or hostile interference can significantly compromise flight stability. Conventional flight controllers typically detect complete motor failure but may lack sensitivity to early-stage performance degradation. This limitation reduces the system’s ability to perform adaptive control adjustments prior to critical instability. Furthermore, existing literature highlights a gap in integrating real-time motor health diagnostics with closed-loop thrust redistribution mechanisms to enable graceful degradation rather than abrupt system failure [30], [47], [48].
+### Table 1. Experiment matrix
 
-To address this limitation, the proposed architecture implements a C++ based Differential Immune System for continuous rotor health monitoring. The subsystem evaluates real-time RPM deviation, vibration characteristics, temperature profiles, and current draw for each actuator. When performance deviation exceeds a predefined threshold (e.g., 10% RPM variance), the controller dynamically redistributes thrust among healthy motors and performs adaptive PID parameter retuning within the active control cycle. This mechanism enhances flight resilience by stabilizing the platform under partial actuator degradation and reducing the likelihood of abrupt mission termination.
+| Subsystem | Conditions | Metric | Evidence boundary |
+|---|---|---|---|
+| Authenticated election | N = 5, 10, 20, 50; eight fault scenarios; six seeds each | Correct leader certificate; partition refusal; packet count; same-epoch conflict | Virtual datagram schedule; static roster |
+| Formation | Four patterns; spacing 12 m; Gaussian 6 m perturbation | Hypothetical close waypoint pairs; geometric reference deviation | No dynamics or physical collision |
+| Task allocation | Healthy or 20% degraded; naive ID baseline | Ineligible assignments; task count; Euclidean distance | Not energy/mission completion |
+| Known-beacon receiver | Four synchronized anchors; arrival jitter 0/100/350 microseconds; no-reference control | Conditional XY error; success rate | Known frame, simulated clocks |
+| Sound-source TDOA | Four known microphones; noise SD 0/0.02/0.05 | Conditional XY error; detection rate | Synthetic impulses, not recorded audio |
 
-F. Processing Jitter and Communication Latency
+## 5. Results
 
-Autonomous swarm coordination requires tightly synchronized interaction between high-level decision logic (e.g., Python-based intelligence modules) and low-level real-time flight control (C++ firmware). Variations in processing time, inter-process communication delays, or network jitter can introduce temporal inconsistencies between command generation and actuator execution. When synchronization is disrupted, control inputs may be applied to a system state that has already evolved, increasing the risk of navigation instability or unsafe trajectory deviations in dynamic airspace environments.
+### 5.1 Signed election, fault injection and communication cost
 
-To mitigate this risk, the proposed architecture incorporates dedicated latency monitoring and inter-process synchronization modules. The LatencyMonitor and MLBridge components continuously measure the complete C++ → Python → C++ round-trip time (RTT) using a 120-sample rolling window. If the measured RTT exceeds a predefined safety threshold (e.g., 220 ms), the system automatically transitions to a local-only fallback avoidance mode to maintain safe navigation. Additionally, a hardware-level watchdog timer supervises the Python process and initiates an emergency return-to-home sequence within approximately 1.5 seconds in the event of process hang or failure. This layered timing supervision mechanism enhances real-time stability and reduces the impact of processing jitter on swarm coordination.
+Healthy signed-election convergence was observed in all six trials for every N value. The same tested success count occurred under signed Byzantine vote withholding, equivocation and the nominal 15% packet-loss schedule, but the narrow sample does not establish resilience to arbitrary adversarial scheduling. Each 6/6 success rate has a 95% Wilson interval of approximately 0.610–1.000. Near-even partitions produced no certified honest nodes in all six trials per fleet size; that is **safe non-election**, not successful availability. No same-epoch conflicting certified leader pairs were recorded in the archived schedules, but a zero observed count cannot prove full consensus safety.
 
-III. SYSTEM ARCHITECTURE OVERVIEW
+Figure 2 distinguishes observed certificate convergence from safety-preserving refusal. Table 2 reports raw event counts and the healthy scenario's mean transmissions per repetition. Transmission cost grew from 80 packets at N = 5 to 9,800 at N = 50 in the tested all-to-all messaging pattern. The virtual clock's failure-recovery scenario includes the programmed leader timeout and event delivery; the observed mean near 5.28 s is therefore NOT a measured real-drone failover delay or a prediction of physical recovery time. It directly contradicts an unsupported 1.2 s field-recovery claim in the legacy manuscript.
 
-The proposed system is implemented as a layered and modular architecture with clearly defined dependency boundaries between functional components. At the highest level, an operator interface provides mission supervision and command input through a PyQt5-based graphical console. Beneath this layer, a centralized coordination module (SwarmManager) orchestrates decentralized swarm behavior, leader election, and inter-drone synchronization. Each drone maintains an independent state and physics model to ensure local autonomy and fault tolerance. Supporting these core components are specialized subsystems including the distributed Flying Ledger, acoustic TDOA localization module, machine learning–based obstacle avoidance engine, dynamic obstacle modeling unit, and encrypted communication layer. At the lowest level, a C++ Hardware Abstraction Layer (HAL) interfaces with the MAVLink/PX4 flight controller, enabling real-time motor control and sensor integration. Telemetry and sensor data propagate upward through the architecture, while command signals flow downward from the operator through the elected leader to follower drones.
+![Figure 2. Observed signed-certificate convergence; no quorum under balanced partition is correctly shown as zero availability.](figures/fig2_election.svg)
 
-Fig. 1 illustrates the layered architectural framework of the proposed system. It demonstrates the high-level coordination handled by the Python-based SwarmManager, the decentralized security layer (Flying Ledger), and the low-level real-time execution core implemented in C++. The diagram highlights the bidirectional data flow between the operator interface and the autonomous agents, emphasizing the modular separation of the ML inference engine and the acoustic TDOA localization module.
+### Table 2. Observed election outcomes (six trials per setting)
 
-![Fig. 1](<Docs/research_img/fig. 1.png>)
+| N | f | q | Healthy | 15% loss | Withholding | Safe no-certificate, near-even split | Healthy packets per trial |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 5 | 1 | 4 | 6/6 | 6/6 | 6/6 | 6/6 | 80 |
+| 10 | 3 | 7 | 6/6 | 6/6 | 6/6 | 6/6 | 360 |
+| 20 | 6 | 14 | 6/6 | 6/6 | 6/6 | 6/6 | 1,520 |
+| 50 | 16 | 34 | 6/6 | 6/6 | 6/6 | 6/6 | 9,800 |
 
+### 5.2 Formation waypoint geometry
 
-Technology Stack: The software stack is divided across two primary execution domains. Python 3.11+ manages swarm-level logic, drone behavioral modeling, acoustic processing, distributed ledger operations, machine learning inference, obstacle modeling, and graphical user interface rendering. C++17 is employed for time-critical flight control operations, MAVLink communication, and latency supervision. Inter-process communication between Python and C++ modules is implemented via shared-memory IPC with timestamp-annotated packets, enabling round-trip timing analysis through the LatencyMonitor subsystem. Encrypted inter-drone communication utilizes AES-256-GCM implemented through the Python cryptography library to ensure confidentiality and integrity of transmitted telemetry and control commands.
+The V-pattern experiment shows that the generated local neighbor-separation adjustments changed the mean close-waypoint-pair count from 0.17, 0.33, 0.50 and 1.17 to 0.00 at N = 5, 10, 20 and 50, respectively, for the six sampled scenes. These are end-point *waypoint comparisons* only; vehicles were not commanded along those paths and the data cannot support collision-rate or flight-stability conclusions. Mean distance from unperturbed reference waypoints did not consistently decrease, emphasizing the distortion–separation trade-off. Figure 3 shows the before/after values.
 
-To support reproducibility and further academic research, the entire software stack, including the ML inference engine and the Flying Ledger protocol, has been open-sourced on GitHub [Link].
+![Figure 3. Hypothetical V-formation waypoint separation under synthetic position perturbations.](figures/fig3_formation.svg)
 
-Hardware Specifications: The physical implementation of the swarm agents is designed to support the high computational demands of the decentralized ledger and ML inference. The key hardware components and their respective roles within the architecture are detailed in Table I.
+### 5.3 Greedy task allocation versus an intentionally naive baseline
 
-Table I Drone Hardware Configuration
+With approximately 20% simulated nodes below health eligibility thresholds, the naive node-ID assignment selected an average of 0.33, 1.67, 2.50 and 7.00 ineligible node-task pairs for N = 5, 10, 20 and 50, respectively. The implemented eligibility-filtered greedy allocator assigned no tasks to ineligible nodes in those trial sets while still allocating three, seven, fifteen and thirty-seven tasks per run. Mean Euclidean assignment distances were also lower than the naive baseline, but this is an intentionally weak comparator without obstacle-aware routing, fairness or energy modeling. Figure 4 shows health-eligibility outcomes only; it must not be read as proof of superior mission efficiency.
 
-3.1 Module Dependency Graph
+![Figure 4. Task assignment to ineligible simulated nodes under degraded health.](figures/fig4_assignment.svg)
 
-The system entry point initializes the swarm environment by instantiating the central orchestration engine and launching the operator interface. The core coordination module (SwarmManager) functions as the aggregation layer for all major subsystems, including the ObstacleManager, LatencyMonitor, MLBridge, AcousticTrackingSystem, per-drone FlyingLedger instances, and the CommunicationManager event bus. These components are implemented as managed singleton services to ensure consistent state propagation and controlled inter-module interaction.
+### 5.4 Synthetic acoustic estimates: success and conditional error
 
-Each Drone object encapsulates its own state model and maintains a dedicated instance of the MLDecisionSupport module for localized decision inference. This design preserves per-node autonomy while allowing higher-level coordination through the SwarmManager.
+Table 3 separates receiver localization from sound-source estimation. The four-known-beacon receiver estimator localized all six samples per jitter condition with a mean conditional XY error of approximately 0.000 m at zero jitter (numerical precision), 0.044 m at 100 microseconds and 0.153 m at 350 microseconds. When the beacon reference was removed, it returned zero successful estimates and no position errors; these were left as missing instead of incorrectly counting them as zero. Sound-source impulse localization detected six of six events at the two lower sample-noise levels; at a noise standard deviation of 0.05 it detected five of six, and among those five detected estimates mean position error was 10.23 m. This counterexample invalidates any unconditional sub-3 m accuracy assertion across noise conditions.
 
-Low-level hardware interaction is abstracted through a C++ based DroneController module interfaced via MAVLink. The controller exposes sensor configuration parameters and runtime settings through environment-variable initialization loaded from a structured configuration file (.env). This separation of high-level swarm logic and low-level flight control enforces modular dependency boundaries while enabling deterministic hardware-level execution.
+Figure 5 plots the jitter-conditioned receiver positioning errors; it is not a sound-source accuracy curve or a field GPS-denial result.
 
-IV. LEADER ELECTION — MCSS PROTOCOL
+![Figure 5. Known-synchronized-beacon receiver localization under simulated arrival jitter.](figures/fig5_acoustic.svg)
 
-4.1 Multi-Criteria Suitability Scoring
+### Table 3. Conditional acoustic localization outcomes (six trials per condition)
 
-The Multi-Criteria Suitability Scoring (MCSS) protocol assigns each candidate drone a scalar suitability score , computed as a weighted aggregation of normalized hardware and communication health metrics:
+| Estimator and condition | Successful | Mean XY error among successful (m) | Important assumption |
+|---|---:|---:|---|
+| Known-beacon receiver, 0 microseconds jitter | 6/6 | 0.0000 | Known synchronized external XY anchors |
+| Known-beacon receiver, 100 microseconds jitter | 6/6 | 0.0437 | Known synchronized external XY anchors |
+| Known-beacon receiver, 350 microseconds jitter | 6/6 | 0.1532 | Known synchronized external XY anchors |
+| Known-beacon receiver, no reference | 0/6 | Not defined | Missing reference: estimator refuses |
+| Sound source, 0.0 sample-noise SD | 6/6 | 0.0019 | Fixed, known microphone XY positions |
+| Sound source, 0.02 sample-noise SD | 6/6 | 0.0019 | Fixed, known microphone XY positions |
+| Sound source, 0.05 sample-noise SD | 5/6 | 10.2263 | Fixed, known microphone XY positions |
 
-$$
-S_i = w_b B_i + w_m M_i + w_l L_i
-$$
+### 5.5 Reproducibility and uncertainty
 
-where $B_i$ denotes the normalized battery state-of-charge; $M_i$ represents the Motor Health Index defined as
+The 378-row evidence artifact and 63-setting summary were generated by one successful GitHub Actions experiment job and passed its schema checks. The separate application regression suite covers secure communications, basic consensus behavior, simulated fleet control, acoustics and ledger integrity across supported operating systems. Such passing tests verify code behavior under the scripted conditions; neither test counts nor CI status measure deployment reliability. The present six replicates per setting provide exploratory uncertainty intervals only. Reporting the Wilson lower bound for 6/6 success (about 0.610) is a deliberate safeguard against overstating observed reliability. Raw and summary results, their source revision and interpreter/environment metadata are available for reproduction; later changes must be accompanied by a fresh result artifact rather than silently replacing the underlying code revision.
 
-$$
-M_i = 1 - d_i
-$$
+## 6. Discussion, threat model and validity limits
 
-and $L_i$ corresponds to the link quality score derived from Received Signal Strength Indicator (RSSI) stability and packet-loss statistics.
+The principal engineering benefit of the implementation is that each authorized action can be related to an authenticated member and an epoch-specific voting certificate. That provenance helps characterize spoofing, replay and crash recovery in software, but the simulated fault injection does not contain an adaptive attacker controlling arbitrary network timings, clock skew, compromised signing keys, or persistent malicious membership. Even an observed zero same-epoch conflict rate gives no formal proof of state-machine consensus [22,23]. Likewise, the healthy fleet's increasing packet count is consistent with all-to-all gossip overhead; stronger scalability claims require algorithmic and network comparisons across a wider workload distribution.
 
-The weighting coefficients $w_b,w_m,w_l$ satisfy the convexity constraint
+The formation and scheduling modules are useful standalone decision functions. However, waypoint proximity is not a vehicle collision, straight-line travel is not mission energy, and successful assignment is not completed inspection. More appropriate baselines from optimization, auction systems and model predictive control must be implemented before claiming comparative advantage [11–17]. The present naive baseline makes only the limited conclusion that checking node health can prevent assigning work to deliberately ineligible members in the generated cases.
 
-$$
-w_b + w_m + w_l = 1, \qquad w_b,w_m,w_l \ge 0
-$$
+The acoustic module results strongly depend on the chosen sensors, source distribution, impulse synthesis, known beacon emission schedule and bounded noise. Known-anchor localization without a GPS argument to the solver is not the same as externally unaided vehicle localization. Measured source-position error at the highest tested noise level and the no-reference failure case should be retained in any abstract or submission discussion. A field study would need synchronized real microphones, changing acoustic propagation speed, multipath, motor interference, moving anchors, measured clocks, GNSS-denied trajectory truth and uncertainty propagation [4,18,19,24].
 
-with default configuration values $w_b=0.45$, $w_m=0.35$, and $w_l=0.20$.
+Internal-validity threats include seeded virtual delivery distributions that omit adversarial reordering tails; a fixed static roster; and application-level fault injection rather than independent multi-radio deployment. Construct-validity threats concern how virtual milliseconds, waypoint pairs, and modelled health states map to real-world performance. Statistical threats include six repeats, repeated task generation from the same PRNG family, multiple scenario comparisons and bootstrap intervals that do not correct for selection or multiplicity. External validity is limited to the supplied generated scenarios. These limitations should accompany the public artifact and any manuscript submission rather than being moved solely to supplementary material.
 
-Leader selection is determined by
+The related acoustic conference contribution [24] is acknowledged to avoid ambiguous novelty or duplicate-publication claims. The novel focus of this manuscript is an integrated cryptographic/swarm-software **evaluation protocol** and transparent validation results. It does not claim to introduce the original GCC-PHAT method, Ed25519, AES-GCM, or full Byzantine consensus, nor to reproduce the experimentally richer control architectures cited in the literature.
 
-$$
-L^* = \arg\max_i S_i
-$$
+## 7. Conclusion
 
-where $L^*$ denotes the elected leader. A re-election procedure is automatically triggered when the incumbent leader fails to transmit two consecutive heartbeat signals, ensuring dynamic reconfiguration under node failure conditions.
+An open, opt-in UAV-swarm software prototype was evaluated using real signed election routines and a synthetic event-driven network, geometric waypoint studies, health-filtered task assignments and two independent acoustic localization formulations. The archived six-repeat, 378-observation evidence set covers four fleet sizes up to 50 members. Within the evaluated schedules, healthy election trials obtained certificates, near-even partitions withheld authority, and malicious packet experiments did not produce recorded same-epoch conflicting certified leaders. Formation adjustment reduced hypothetical close waypoint-pair counts and health filtering avoided ineligible task assignments relative to the explicitly naive comparator. Synthetic known-beacon errors increased with arrival jitter, and high source-signal noise produced markedly worse conditional localization error. These outcomes establish reproducible software behavior under declared assumptions; they do not establish field readiness, formal Byzantine consensus safety, or autonomous GNSS-denied flight. Independent testing using real synchronized acoustic captures, realistic comparative controllers and adversarial network models is required for stronger claims.
 
-Fig. 2. MCSS-based decentralized leader election process.
+## Data availability
 
-![Fig. 2](<Docs/research_img/fig. 2.png>)
+The exact data source is the GitHub Actions **seeded-swarm-experiment-evidence** artifact for the experimental repository revision `78cce082c5acabe68ebc5f76a32872b210308af5` (manifest date 8 November 2026). The archive includes 378 raw trial rows, per-setting summaries, the manifest and generated report. Repository: https://github.com/smshagor-dev/decentralized-coordination-and-acoustic-localization-in-secure-autonomousa-drone-swarms . The supplementary ZIP delivered with this manuscript preserves the verified experiment archive. The analyses and figures in this manuscript use that archive only; they must be regenerated before substituting a later code revision.
 
+## Code availability
 
-4.2 Byzantine Fault Tolerance Properties
+The public repository includes fixed-roster coordination, authenticated transport, acoustic solvers, experiment modules, CI configuration and reproducibility documentation. Run the evidence generator with the seed, fleet sizes, trial counts and dependencies documented in `Docs/SWARM_EXPERIMENT_PROTOCOL.md`. Generated output is expressly labelled software-only. A versioned release tag and persistent data DOI should be assigned **before final journal submission** if required by the chosen journal; neither is invented here.
 
-The MCSS-based leader election mechanism is designed to preserve consensus integrity in the presence of Byzantine behavior affecting up to
+## Declarations and submission disclosures
 
-$$
-f \le \left\lfloor\frac{N-1}{3}\right\rfloor
-$$
+- **Ethics approval:** Not applicable to the reported computational simulations; no human participants or animal experiments are represented.
+- **Author contributions:** Md Shahanur Islam Shagor: conceptualization, software, experiments, formal analysis, manuscript preparation. To be confirmed before submission.
+- **Funding:** Author confirmation required; no funding declaration is inferred.
+- **Competing interests:** Author confirmation required; no declaration is inferred.
+- **Consent for publication:** To be completed in the selected submission system as applicable.
+- **Prior work and overlap:** The related acoustic conference article [24] must be disclosed. Its empirical data and figures are not claimed as new in this paper. Any overlapping swarm-command-authorization manuscript under consideration elsewhere must also be declared to the target editor; simultaneous duplicate submissions are not appropriate.
+- **Correspondence and affiliation:** Validate the displayed university affiliation, ORCID and corresponding email against the intended journal's official submission record before sending.
 
-Fig. 3. Fault tolerance bound of the MCSS protocol under Byzantine behavior
+## References
 
-![Fig. 3](<Docs/research_img/fig. 3.png>)
+1. Alqudsi Y, Makaraci M. UAV swarms: research, challenges, and future directions. Journal of Engineering and Applied Science. 2025;72:12. https://doi.org/10.1186/s44147-025-00582-3
+2. Wang X, Zhao Z, Yi L, et al. A survey on security of UAV swarm networks: attacks and countermeasures. ACM Computing Surveys. 2025;57(3):74. https://doi.org/10.1145/3703625
+3. Dimos A, Skoutas DN, Nomikos N, Skianis C. A survey on UxV swarms and the role of artificial intelligence as a technological enabler. Drones. 2025;9(10):700. https://doi.org/10.3390/drones9100700
+4. Jarraya I, Al-Batati A, Kadri MB, et al. GNSS-denied unmanned aerial vehicle navigation: analyzing computational complexity, sensor fusion, and localization methodologies. Satellite Navigation. 2025;6:9. https://doi.org/10.1186/s43020-025-00162-z
+5. Khargharia HS, Ouali A, Shakya S, Ahmad S. Collision avoidance in UAV swarms: a learning-centric perspective on collaborative intelligence. Neurocomputing. 2026. https://doi.org/10.1016/j.neucom.2025.132020
+6. Sophia S, Leelipushpam PGJ, Jebadurai IJ, et al. Zero-trust graph-attentive intelligence for Byzantine-resilient UAV swarms under communication constraints. Discover Electronics. 2026;3:154. https://doi.org/10.1007/s44291-026-00305-9
+7. Kou G, Ye Q, Zhang M, Wang X, Fu W, et al. Intelligent UAV swarm key agreement survey: systematic taxonomy, cryptographic automaton and quantum resistance. Internet of Things. 2025;34:101720. https://doi.org/10.1016/j.iot.2025.101720
+8. Chen L, Zhu Y, Liu S, Yu H, Zhang B. PUF-based dynamic secret-key strategy with hierarchical blockchain for UAV swarm authentication. Computer Communications. 2024;218:31–43. https://doi.org/10.1016/j.comcom.2024.02.001
+9. Zhu Y, Chen L, Liu S, Yang B, et al. Blockchain-based lightweight key management scheme for secure UAV swarm task allocation. IEEE Transactions on Network and Service Management. Published online 2025. https://doi.org/10.1109/TNSM.2025.3636562
+10. Chandran I, Vipin K. Network analysis of decentralized fault-tolerant UAV swarm coordination in critical missions. Drone Systems and Applications. 2024;12:1–15. https://doi.org/10.1139/dsa-2023-0101
+11. Xu B, Dai Y, Suleman A, Shi Y. Distributed fault-tolerant control of multi-UAV formation for dynamic leader tracking: a Lyapunov-based MPC framework. Automatica. 2025;175:112179. https://doi.org/10.1016/j.automatica.2025.112179
+12. Hu Y, Miao Z, Wang Y, Zhang H, Wang X, He W. Safe and reliable distributed fault-tolerant formation control for quadrotor swarms. IEEE Transactions on Aerospace and Electronic Systems. 2025;61(4):9220–9234. https://doi.org/10.1109/TAES.2025.3553120
+13. Miao Q, Zhang K, Jiang B. Fixed-time collision-free fault-tolerant formation control of multi-UAVs under actuator faults. IEEE Transactions on Cybernetics. 2024;54(6):3679–3691. https://doi.org/10.1109/TCYB.2024.3352251
+14. Luo M-M, Wang J. Distributed adaptive event-triggered formation fault-tolerant control for multiple quadrotors. Measurement and Control. 2024. https://doi.org/10.1177/00202940241306656
+15. Chakraa H, Guérin F, Leclercq E, Lefebvre D. Optimization techniques for multi-robot task allocation problems: review on the state-of-the-art. Robotics and Autonomous Systems. 2023;168:104492. https://doi.org/10.1016/j.robot.2023.104492
+16. Shan X, Jin Y, Jurt M, Li P. A distributed multi-robot task allocation method for time-constrained dynamic collective transport. Robotics and Autonomous Systems. 2024;178:104722. https://doi.org/10.1016/j.robot.2024.104722
+17. Athira KA, Udayan JD, Subramaniam U. A systematic literature review on multi-robot task allocation. ACM Computing Surveys. 2024. https://doi.org/10.1145/3700591
+18. Shokrollahi M, Tamaddon M. A low-complexity highly accurate sound source localization algorithm based on sound sensor arrays. Journal of Vibration and Control. 2024. https://doi.org/10.1177/10775463241284432
+19. Knapp CH, Carter GC. The generalized correlation method for estimation of time delay. IEEE Transactions on Acoustics, Speech, and Signal Processing. 1976;24(4):320–327. https://doi.org/10.1109/TASSP.1976.1162830
+20. Josefsson S, Liusvaara I. Edwards-Curve Digital Signature Algorithm (EdDSA). RFC 8032. 2017. https://doi.org/10.17487/RFC8032
+21. Dworkin M. Recommendation for Block Cipher Modes of Operation: Galois/Counter Mode (GCM) and GMAC. NIST SP 800-38D. 2007. https://doi.org/10.6028/NIST.SP.800-38D
+22. Yin M, Malkhi D, Reiter MK, Gueta GG, Abraham I. HotStuff: BFT consensus with linearity and responsiveness. ACM PODC. 2019:347–356. https://doi.org/10.1145/3293611.3331591
+23. Castro M, Liskov B. Practical Byzantine fault tolerance. 3rd USENIX Symposium on Operating Systems Design and Implementation. 1999. https://www.usenix.org/conference/osdi-99/practical-byzantine-fault-tolerance
+24. Shkhagor MS, Zarevich AI, Zarevich MA. Acoustic localization for decentralized swarms of unmanned aerial vehicles in the absence of GPS. MIST 2026:1425–1432. [Related conference publication; overlap disclosed]. https://doi.org/10.58168/MIST2026_1425-1432
+25. Wang J, Yang C, Zhang C, et al. Byzantine-resilient UAV swarm federated reinforcement learning for low-altitude economy. IEEE Transactions on Vehicular Technology. 2026;75(7):12148–12165. https://doi.org/10.1109/TVT.2026.3652125
+26. Han Y, Yuan M, Li Z, Shen J, Chen P. Detection-guided resilient consensus control for UAV swarms under random denial-of-service attacks. Eng. 2026;7(9):451. https://doi.org/10.3390/eng7090451
+27. Ajakwe SO, Kim D-S. Federated learning and lightweight blockchain for resilient UAV communication against PNT and model poisoning attacks. Proceedings of IEEE ICTC. 2025. https://doi.org/10.1109/ICTC66702.2025.11388093
 
+## Supplementary methodological audit
 
-nodes, consistent with classical distributed fault-tolerance bounds [4], [5]. Under this constraint, the swarm maintains a valid leader selection outcome despite arbitrary or malicious behavior by faulty participants.
-
-For the minimum operational configuration $N=4$, the system tolerates one Byzantine node. In the default demonstration configuration $N=5$, one faulty node can be accommodated while preserving coordinated swarm operation.
-
-Leader re-election latency is bounded by two consecutive heartbeat intervals plus inter-node score propagation delay. In experimental simulation, this results in an observed upper bound of approximately 1.2 seconds for leadership restoration following failure detection. This bounded recovery time contributes to maintaining distributed coordination under transient node compromise or crash faults.
-
-4.3 Role Transitioning
-
-The swarm architecture defines three operational roles: Leader, Follower, and Relay. Each role encapsulates distinct behavioral and communication responsibilities to preserve structured coordination and controlled authority distribution within the decentralized framework.
-
-The Leader is responsible for executing mission-level objectives, generating high-level trajectory directives, and disseminating position targets to follower nodes through the CommunicationManager event bus. In addition, the Leader periodically broadcasts heartbeat signals to confirm operational continuity and availability.
-
-A Follower operates under a strictly responsive control model. It processes only authenticated LEADER_COMMAND events and does not independently initiate trajectory or mission-level commands. This constraint ensures hierarchical coherence while maintaining distributed execution capability.
-
-The Relay role, introduced as a scalability extension, is designed to facilitate communication bridging between spatially separated drone clusters or in environments with partial connectivity. Although not mandatory in the baseline configuration, the Relay abstraction enables future expansion toward large-scale swarm deployments.
-
-All role transitions including leader promotion, follower reassignment, or relay activation are recorded as immutable state-transition events within the Flying Ledger. This logging mechanism ensures verifiable traceability of authority changes and supports post-mission audit integrity within the decentralized coordination model.
-
-Fig. 4. Operational role model of the decentralized swarm showing Leader command dissemination, Follower responsive control, and Relay-based communication bridging, with role transitions recorded on the distributed ledger.
-
-![Fig. 4](<Docs/research_img/fig. 4.png>)
-
-
-V. SECURE COMMUNICATION — AES-256-GCM MESH
-
-5.1 Encrypted Transport Layer
-
-A monotonically increasing sequence number is included as Additional Authenticated Data (AAD) to mitigate replay attacks. All inter-drone control and telemetry messages are protected using AES-256 in Galois/Counter Mode (GCM), an authenticated encryption scheme that provides both confidentiality and integrity guarantees [14], [15]. The symmetric swarm key is derived from a shared passphrase through PBKDF2-HMAC-SHA256 with 100,000 iterations to increase resistance against brute-force attacks. The key derivation process is defined as
-
-$$
-K = \mathrm{PBKDF2\mbox{-}HMAC\mbox{-}SHA256}(P,\,salt,\,100000,\,32)
-$$
-
-where the output length is 32 bytes (256 bits).
-
-Each encrypted packet follows the structure
-
-$$
-\text{packet} = (seq,\, IV,\, C,\, tag)
-$$
-
-where a per-message Initialization Vector (IV) is generated using a cryptographically secure random source. The authentication tag produced by GCM ensures that any unauthorized modification of ciphertext or associated data is detected during decryption. By combining strong key derivation with authenticated encryption, the communication layer enhances resistance against replay, tampering, and interception attempts within the swarm network.
-
-Fig. 5. AES-256-GCM encrypted packet format with PBKDF2-derived swarm key and authenticated encryption tag.
-
-![Fig. 5](<Docs/research_img/fig. 5.png>)
-
-
-5.2 Replay Attack Prevention
-
-To mitigate replay attacks in the decentralized swarm network, each transmitted message includes a monotonically increasing sequence number assigned by the originating drone. The sequence number is incorporated as authenticated data within the AES-256-GCM encryption process, ensuring that it is integrity-protected and cannot be modified without detection.
-
-Each receiving drone maintains a per-sender sequence counter representing the highest validated sequence value previously accepted from that peer. Upon message reception, the receiver verifies that the incoming sequence number satisfies
-
-$$
-seq_{in} > seq_{last}(sender)
-$$
-
-Only messages meeting this strict ordering constraint are processed; all others are discarded without acknowledgment. This mechanism provides deterministic replay protection without reliance on synchronized clocks, thereby avoiding time-drift vulnerabilities common in timestamp-based schemes [4]. By combining sequence validation with authenticated encryption, the communication layer strengthens resistance against packet duplication and delayed retransmission attacks within the swarm mesh.
-
-Fig. 6. Replay protection mechanism using per-sender monotonic sequence numbers with strict ordering validation at the receiver.
-
-![Fig. 6](<Docs/research_img/fig. 6.png>)
-
-
-5.3 Wireless Transport Layer (IP-Independent Communication)
-
-Inter-drone communication is implemented over a direct wireless link without reliance on IP networking or WiFi infrastructure. The transport layer operates using a lightweight peer-to-peer broadcast mechanism over a shared RF channel, enabling direct packet dissemination between swarm nodes.
-
-Unlike IP-based multicast systems, the proposed design avoids routing, DHCP negotiation, and network stack overhead, thereby reducing latency variability and infrastructure dependency. The wireless transport prioritizes deterministic timing and minimal protocol overhead, which are critical for real-time swarm coordination.
-
-Since the transport layer does not guarantee delivery, higher-level protocol mechanisms such as authenticated encryption, sequence-number validation, and heartbeat supervision are responsible for ensuring integrity, replay protection, and fault detection. This layered approach maintains low-latency communication while preserving security and coordination robustness in infrastructure-denied environments.
-
-Fig. 7. Infrastructure-independent wireless broadcast architecture enabling peer-to-peer encrypted communication among swarm nodes.
-
-![Fig. 7](<Docs/research_img/fig. 7.png>)
-
-
-VI. DYNAMIC OBSTACLE AVOIDANCE
-
-6.1 Collision Cone Probability
-
-The DynamicObstaclePredictor estimates potential collision risk using a geometric collision-cone formulation as described in [25], [26]. Consider a drone located at position with velocity , and an obstacle located at position with velocity . The relative position and velocity vectors are defined as
-
-$$
-\mathbf{r}=\mathbf{p}_o-\mathbf{p}_d, \qquad \mathbf{v}_{rel}=\mathbf{v}_o-\mathbf{v}_d
-$$
-
-The half-angle of the collision cone is computed as
-
-$$
-\theta_c = \sin^{-1}\!\left(\frac{R_{eff}}{\|\mathbf{r}\|}\right), \qquad \|\mathbf{r}\|>R_{eff}
-$$
-
-Fig. 8. Geometric collision-cone formulation showing relative position vector , relative velocity , obstacle radius , and half-angle . A collision condition occurs when lies within the cone defined by .
-
-![Fig. 8](<Docs/research_img/fig. 8.png>)
-
-
-where $R_{eff}$ denotes the effective obstacle radius including a predefined safety buffer.
-
-Let $\hat{\mathbf{r}}=\mathbf{r}/\|\mathbf{r}\|$ be the normalized relative position vector. A potential collision condition is detected when the angular separation between $\mathbf{v}_{rel}$ and $-\hat{\mathbf{r}}$ satisfies
-
-$$
-\angle(\mathbf{v}_{rel},-\hat{\mathbf{r}}) \le \theta_c
-$$
-
-indicating that the relative velocity vector lies within the collision cone. In such cases, a corrective velocity adjustment is required to prevent intersection trajectories.
-
-To reduce unnecessary avoidance maneuvers for distant objects, a time-to-closest-approach (TCA) filter is applied. Collision cone intersections corresponding to predicted encounters occurring beyond a 4-second horizon are disregarded, ensuring responsiveness to imminent threats while maintaining trajectory stability.
-
-6.2 Trajectory Prediction and Kinematic Model
-
-The TrajectoryEstimator predicts short-horizon obstacle motion using a second-order kinematic formulation. For an obstacle with initial position , velocity components , and acceleration components , the predicted position at future time is given by
-
-$$
-\mathbf{p}(t+\Delta t)=\mathbf{p}(t)+\mathbf{v}(t)\Delta t+\tfrac{1}{2}\mathbf{a}(t)\Delta t^2
-$$
-
-Fig. 9. Short-horizon trajectory prediction using second-order kinematics. The Linear model assumes constant velocity, the Circular model follows constant angular velocity about a fixed center, and the Random-Walk model introduces bounded stochastic acceleration within defined limits.
-
-![Fig. 9](<Docs/research_img/fig. 9.png>)
-
-
-This formulation enables continuous estimation of obstacle trajectories within a bounded prediction horizon.
-
-Three motion models are supported:
-
-Linear Model (Constant Velocity):
-Assumes $\mathbf{a}=\mathbf{0}$, resulting in uniform motion along a fixed direction.
-
-Circular Model (Constant Angular Velocity):
-Models obstacle motion along a circular path with constant angular velocity around a fixed center, enabling prediction of curved trajectories.
-
-Random-Walk Model (Bounded Stochastic Acceleration):
-Introduces bounded stochastic perturbations to acceleration within $\|\mathbf{a}\|\le a_{max}$, subject to a maximum speed constraint of 18 m/s, allowing realistic modeling of unpredictable motion.
-
-Predictions are sampled at 0.3-second intervals over a 3-second forward horizon, resulting in a discretized trajectory set used for collision-cone evaluation and avoidance planning.
-
-6.3 Acceleration-Limited Velocity Blending
-
-Raw avoidance velocity vectors generated by the prediction engine are combined with the mission-level goal velocity through a smooth steering formulation. The desired velocity is defined as
-
-$$
-\mathbf{v}_{des}=\mathbf{v}_{goal}+\lambda\,\mathbf{v}_{avoid}
-$$
-
-To ensure gradual transition from the current motion state, a blending operation is applied:
-
-$$
-\mathbf{v}_{cmd}=(1-\alpha)\mathbf{v}_{curr}+\alpha\mathbf{v}_{des}
-$$
-
-where is a smoothing coefficient controlling steering aggressiveness.
-
-To maintain physical feasibility, the resulting acceleration demand is evaluated as
-
-$$
-\mathbf{a}_{req}=\frac{\mathbf{v}_{cmd}-\mathbf{v}_{curr}}{\Delta t}
-$$
-
-If $\|\mathbf{a}_{req}\|>a_{max}$, the velocity increment is proportionally scaled such that
-
-$$
-\mathbf{v}_{cmd}\leftarrow \mathbf{v}_{curr}+\frac{a_{max}\Delta t}{\|\mathbf{v}_{cmd}-\mathbf{v}_{curr}\|}(\mathbf{v}_{cmd}-\mathbf{v}_{curr})
-$$
-
-while preserving the direction of motion.
-
-Fig. 10. Velocity blending mechanism showing current velocity , goal velocity , avoidance vector , and the smoothed output controlled by interpolation factor . Acceleration magnitude is subsequently constrained to .
-
-![Fig. 10](<Docs/research_img/fig. 10.png>)
-
-
-Finally, the PathReplanner converts the bounded output velocity into a lookahead reference position computed over a 1.2-second horizon, generating a dynamically updated target waypoint for the low-level controller.
-
-6.4 Learned Aggressiveness Scoring
-
-To incorporate behavioral consistency into collision assessment, the DynamicObstaclePredictor maintains a per-obstacle risk memory score updated using exponential smoothing. The update rule is defined as
-
-$$
-r_t=0.86\,r_{t-1}+0.14\cdot\min\!\left(1,\frac{v_t}{20}+\frac{a_t}{6}\right)
-$$
-
-Fig. 11. Exponential risk memory update showing gradual accumulation of aggressiveness score over time using weighted smoothing (0.86 previous memory, 0.14 new observation). Persistently erratic obstacle behavior results in elevated long-term risk weighting.
-
-![Fig. 11](<Docs/research_img/fig. 11.png>)
-
-
-where $v_t$ and $a_t$ denote the instantaneous obstacle speed (m/s) and acceleration magnitude (m/s), respectively. The normalization constants (20 and 6) scale dynamic motion parameters into the unit interval, and the minimum operator ensures boundedness within $[0,1]$.
-
-The exponential weighting introduces temporal memory, allowing obstacles that exhibit consistently high-speed or erratic acceleration patterns to accumulate elevated risk scores over time. This learned aggressiveness factor is incorporated as a multiplicative weight in the final collision probability estimate, increasing avoidance sensitivity for previously unstable obstacles while preserving the underlying geometric collision-cone prediction framework.
-
-VII. ACOUSTIC SOURCE LOCALIZATION — GCC-PHAT TDOA ENGINE
-
-7.1 Time Difference of Arrival Estimation
-
-The CrossCorrelationEngine estimates inter-drone acoustic propagation delay using the Generalized Cross-Correlation with Phase Transform (GCC-PHAT) method [21]. Consider two microphone signals and with Fourier transforms and , respectively. The GCC-PHAT cross-spectrum is defined as
-
-$$
-G_{12}(f)=\frac{X_1(f)X_2^*(f)}{|X_1(f)X_2^*(f)|+\epsilon}
-$$
-
-Fig. 12. Time Difference of Arrival (TDOA) geometry showing two drone-mounted microphones and an acoustic source. The propagation delay defines a hyperbolic locus of possible source locations used in GCC-PHAT localization.
-
-![Fig. 12](<Docs/research_img/fig. 12.png>)
-
-
-where $X_2^*(f)$ denotes the complex conjugate of $X_2(f)$, and $\epsilon$ is a small regularization constant introduced to prevent numerical instability.
-
-The phase-only normalization (division by magnitude) whitens the spectrum and reduces sensitivity to signal amplitude variations and reverberation effects, resulting in a sharper correlation peak in the time domain. The estimated time delay is obtained as
-
-$$
-\hat{\tau}=\arg\max_\tau\;\mathcal{F}^{-1}\{G_{12}(f)\}(\tau)
-$$
-
-where $\mathcal{F}^{-1}\{\cdot\}$ denotes the inverse Fourier transform.
-
-To improve robustness, a secondary direct cross-correlation estimate is computed in parallel. The final delay estimate is selected based on the higher peak magnitude between the GCC-PHAT and direct correlation outputs, providing resilience against low signal-to-noise or multipath conditions.
-
-7.2 TDOA Distance Constraint
-
-Each estimated time delay between sensor pair corresponds to a difference in propagation path length given by
-
-$$
-\Delta d_{ij}=c\,\tau_{ij}
-$$
-
-where $c$ denotes the speed of sound at sea level (at approximately 20 C).
-
-Let $\mathbf{x}$ represent the unknown source position and $\mathbf{s}_i$ denote the known sensor coordinates. The time-delay constraint yields the hyperbolic equation
-
-$$
-\|\mathbf{x}-\mathbf{s}_i\|-\|\mathbf{x}-\mathbf{s}_j\|=c\,\tau_{ij}
-$$
-
-which defines a branch of a hyperbola in two-dimensional space.
-
-Fig. 13. Decentralized drone swarm architecture showing secure RF communication, obstacle prediction, acoustic localization, path replanning, and ledger-based role management.
-
-![Fig. 13](<Docs/research_img/fig. 13.png>)
-
-
-With three or more non-collinear sensors, multiple independent hyperbolic constraints can be constructed. The intersection of these constraints provides an estimate of the source location. In practice, due to measurement noise and finite sampling resolution, the source position is obtained via least-squares minimization over the set of hyperbolic equations.
-
-7.3 Non-Linear Least Squares Fusion
-
-The AcousticFusionEngine estimates the source position by solving the overdetermined system of TDOA-derived hyperbolic constraints using a nonlinear least-squares formulation. Let the unknown source position be $\mathbf{x}$, and let $\mathbf{s}_i$ denote the known sensor coordinates. The optimization problem is defined as
-
-$$
-\mathbf{x}^*=\arg\min_{\mathbf{x}}\sum_{(i,j)}\left(\|\mathbf{x}-\mathbf{s}_i\|-\|\mathbf{x}-\mathbf{s}_j\|-c\,\tau_{ij}\right)^2
-$$
-
-where $\tau_{ij}$ represents the estimated time delay between sensor pair $(i,j)$, and $c$ is the speed of sound.
-
-The problem is solved using SciPy’s Trust-Region Reflective (TRF) least-squares solver with a soft-L1 loss function to reduce sensitivity to outlier delay estimates. To mitigate convergence to local minima, multiple initialization points are evaluated, including drone positions offset by ±10 m and the centroid of all sensor coordinates. The solution yielding the minimum Root Mean Square Error (RMSE) residual is selected.
-
-The localization confidence metric is defined as
-
-$$
-C_{loc}=\frac{1}{1+\mathrm{RMSE}}
-$$
-
-where RMSE denotes the residual error of the optimized solution. Only localization results exceeding a confidence threshold of 0.35 are disseminated to the swarm as validated acoustic detection events.
-
-Fig. 14. AcousticFusionEngine nonlinear TDOA-based localization framework using TRF least-squares optimization with soft-L1 loss, multi-initialization strategy, RMSE-based solution selection, and confidence-threshold validation for swarm-level acoustic event dissemination.
-
-![Fig. 14](<Docs/research_img/fig. 14.png>)
-
-
-7.4 High-Latency Fallback
-
-To preserve real-time responsiveness, the AcousticFusionEngine incorporates a latency-aware fallback strategy. When the measured bidirectional C++↔Python round-trip time (RTT) exceeds a predefined threshold (default: 280 ms), the localization process reduces computational complexity by restricting optimization to the three nearest sensor signals instead of the full sensor set.
-
-This adaptive reduction decreases the dimensionality of the overdetermined system and shortens solver convergence time, thereby maintaining bounded execution within the system’s safety window. While using fewer sensors may slightly reduce localization precision, it enables timely generation of position estimates under network degradation or processing congestion conditions.
-
-By integrating latency monitoring with sensor subset selection, the system balances estimation accuracy against real-time operational constraints in degraded communication scenarios.
-
-Fig. 15. Latency-aware fallback mechanism in the AcousticFusionEngine, where excessive C++↔Python RTT (>280 ms) triggers sensor subset reduction to the three nearest microphones, lowering optimization complexity to preserve real-time localization under degraded network conditions.
-
-![Fig. 15](<Docs/research_img/fig. 15.png>)
-
-
-VIII. THE FLYING LEDGER — BLOCKCHAIN FLIGHT AUDIT
-
-8.1 Block Structure and Cryptographic Hash
-
-Each block within the Flying Ledger is structured to ensure immutability, traceability, and cryptographic integrity of flight events. A block contains the following fields:
-
-Block index
-
-UNIX timestamp
-
-Drone identifier
-
-SHA3-256 hash of the telemetry snapshot ($h_{tele,i}$)
-
-SHA3-256 hash of the event payload ($h_{evt,i}$)
-
-Previous block hash ($H_{i-1}$)
-
-Current block hash ($H_i$)
-
-Ed25519 digital signature
-
-The block hash is computed as
-
-$$
-H_i = \mathrm{SHA3\mbox{-}256}(idx_i \Vert ts_i \Vert id_i \Vert h_{tele,i} \Vert h_{evt,i} \Vert H_{i-1})
-$$
-
-where $\Vert$ denotes byte-wise concatenation.
-
-The use of SHA3-256 [16] provides cryptographic hashing based on the Keccak sponge construction, offering structural diversity relative to SHA-2 family algorithms. Unlike Merkle–Damgård–based constructions, the sponge design avoids certain structural vulnerabilities such as classical length-extension properties.
-
-The resulting block hash is digitally signed using Ed25519 to ensure authenticity and non-repudiation. Any modification to block contents alters $H_i$, thereby invalidating both the cryptographic chain and the associated signature.
-
-Fig. 16. Structure of the Flying Ledger block showing SHA3-256 hash computation, linkage via previous block hash, and Ed25519 digital signature for authenticity and tamper detection
-
-![Fig. 16](<Docs/research_img/fig. 16.png>)
-
-
-8.2 Ed25519 Digital Signatures
-
-Each block in the Flying Ledger is digitally signed by its originating drone using Ed25519 [17], an elliptic-curve digital signature scheme based on Curve25519. Ed25519 was selected due to its performance efficiency, compact signature representation, and deterministic signing procedure.
-
-Unlike traditional ECDSA implementations that require high-quality randomness for nonce generation, Ed25519 employs deterministic nonce derivation from the private key and message hash, reducing dependence on external random number generators during signing. This property mitigates vulnerabilities associated with biased or reused nonces in classical ECDSA implementations.
-
-Ed25519 signatures have a fixed length of 64 bytes, providing compact and predictable encoding compared to variable-length ECDSA signatures. Additionally, the Edwards-curve formulation and deterministic design offer strong security guarantees under standard elliptic-curve discrete logarithm assumptions.
-
-For implementation flexibility, each signature is stored as a Base64-encoded string prefixed with the algorithm identifier (e.g., "Ed25519:"). This encoding scheme enables forward-compatible algorithm agility, allowing future migration to alternative signature schemes without structural changes to the ledger format.
-
-Fig. 17. Ed25519 signing and verification pipeline for block authentication in the Flying Ledger.
-
-![Fig. 17](<Docs/research_img/fig. 17.png>)
-
-
-8.3 Tamper Detection and Chain Verification
-
-Chain integrity verification is performed by sequentially traversing all blocks from the genesis block to the current tip of the ledger. For each block $i$, two validation conditions are evaluated:
-
-The stored `previous_hash` field must match the recomputed hash of the preceding block.
-
-The stored must equal the freshly computed hash obtained by re-evaluating the block’s constituent fields according to Appendix A.3.
-
-Formally, for every block index $i>0$:
-
-$$
-prev\_hash_i = H_{i-1}, \qquad H_i = \mathrm{SHA3\mbox{-}256}(payload_i)
-$$
-
-Fig. 18. Hash-chain integrity verification illustrating tamper propagation from Block to subsequent blocks.
-
-![Fig. 18](<Docs/research_img/fig. 18.png>)
-
-
-Any alteration to block contents modifies the resulting cryptographic hash with overwhelming probability under standard hash function security assumptions. Consequently, a modification in block invalidates its stored hash and propagates inconsistency to all subsequent blocks, enabling both detection and localization of ledger tampering during verification.
-
-8.4 Asynchronous Peer Replication
-
-Upon local block creation, the originating drone disseminates the block to peer nodes using an asynchronous broadcast mechanism executed within a background (daemon) thread. This design decouples ledger replication from time-critical flight control tasks, ensuring non-blocking operation of the swarm.
-
-Each receiving peer invokes a verify_block() validation routine prior to appending the block to its local ledger. The verification process evaluates the following conditions:
-
-Sequential index consistency
-
-Correct linkage via the  field
-
-Recomputed hash equality according to Appendix A.3
-
-Valid Ed25519 signature verification against the sender’s registered public key
-
-Fig. 19. Asynchronous block dissemination and peer-side verification workflow ensuring hash integrity, signature validity, and Byzantine-resistant ledger replication.
-
-![Fig. 19](<Docs/research_img/fig. 19.png>)
-
-
-Blocks failing any validation condition are rejected and not appended to the local chain.
-
-Because block acceptance requires a valid digital signature corresponding to the legitimate drone’s private key, unauthorized block injection attempts are rejected under standard cryptographic assumptions. This mechanism strengthens resistance against Byzantine-style injection attacks in which adversarial nodes attempt to introduce fabricated ledger entries.
-
-IX. C++ DIFFERENTIAL IMMUNE SYSTEM
-
-9.1 Motor Degradation Detection
-
-The C++–based DroneController executes a continuous telemetry monitoring loop synchronized with the hardware update rate. For each motor $j$, the relative RPM deviation is computed as
-
-$$
-d_j = \frac{|rpm_j-rpm_j^{ref}|}{rpm_j^{ref}}
-$$
-
-where a deviation threshold of 10% is used as the primary degradation indicator, i.e., degraded if $d_j \ge 0.10$.
-
-Fig. 20. Motor degradation detection using RPM deviation threshold (≥10%), auxiliary vibration and temperature monitoring, and rolling-window filtering for persistent fault classification.
-
-![Fig. 20](<Docs/research_img/fig. 20.png>)
-
-
-In addition to RPM deviation, vibration magnitude and motor temperature are monitored as secondary health metrics. These auxiliary signals provide corroborative evidence of mechanical wear or imbalance.
-
-To avoid false-positive detections caused by transient load variations or short-duration power fluctuations, the system applies a rolling-window filter over consecutive telemetry samples. A motor is classified as degraded only when the deviation threshold is exceeded persistently across the defined observation window. This temporal filtering ensures robustness against momentary noise while preserving sensitivity to sustained actuator degradation.
-
-9.2 Adaptive Thrust Redistribution
-
-Upon detection of motor degradation, thrust compensation is applied across the remaining healthy motors to preserve attitude stability. Let $T_k$ denote the nominal thrust of motor $k$. The compensated thrust command is defined as
-
-$$
-T_k' = T_k + \Delta T_k, \qquad k\in\mathcal{H}
-$$
-
-where $\Delta T_k$ represents the redistribution increment assigned to healthy motors $k \in \mathcal{H}$, the set of operational actuators.
-
-The compensation allocation follows a geometry-aware distribution strategy: the rotor diametrically opposite the degraded motor receives the largest thrust increment, while adjacent lateral rotors receive proportionally smaller increments to maintain torque balance and yaw stability.
-
-To prevent oscillatory behavior or abrupt torque transients, all compensation terms are passed through a first-order low-pass filter (LPF):
-
-$$
-\Delta T_k^{(t)} = \beta\,\Delta T_k^{(t-1)} + (1-\beta)\,\Delta T_{k,raw}^{(t)}
-$$
-
-where $\beta$ is the smoothing coefficient.
-
-Fig. 21. Geometry-aware thrust redistribution and low-pass filtered compensation for single-motor degradation, with automatic RTL activation under multi-motor failure.
-
-![Fig. 21](<Docs/research_img/fig. 21.png>)
-
-
-If two or more motors are classified as degraded simultaneously, the controller transitions to AUTO_RTL (automatic return-to-launch) mode. Under standard quadcopter dynamics, sustained stable hovering with fewer than three fully functional rotors cannot be reliably maintained; therefore, emergency mission termination is initiated as a safety measure.
-
-9.3 Adaptive PID Retuning
-
-The updateAdaptivePID() routine dynamically adjusts roll, pitch, and yaw controller gains in response to the current actuator health state. This mechanism functions as a gain-scheduling strategy conditioned on motor degradation status.
-
-When a motor is classified as degraded, the proportional gain associated with the affected rotational axis is reduced to mitigate aggressive corrective responses that may otherwise amplify oscillatory behavior under asymmetric thrust conditions. Concurrently, the derivative gain is modestly increased to enhance damping and improve transient stability.
-
-Formally, for a degraded condition:
-
-$$
-K_p' = \eta_p K_p, \quad K_d' = \eta_d K_d, \quad 0<\eta_p<1<\eta_d
-$$
-
-where $\eta_p$ and $\eta_d$ are empirically tuned scaling coefficients.
-
-This adaptive retuning reduces overshoot and oscillation during thrust redistribution and allows the drone to maintain controlled flight during degradation transitions without requiring operator intervention.
-
-Fig. 22. Adaptive PID gain scheduling under motor degradation, reducing proportional gain and increasing derivative gain to improve damping, suppress oscillations, and maintain stable flight during thrust asymmetry.
-
-![Fig. 22](<Docs/research_img/fig. 22.png>)
-
-
-X. LATENCY MONITORING AND SAFETY FALLBACK
-
-10.1 Round-Trip Time Measurement
-
-The LatencyMonitor maintains a rolling window of 120 LatencySample records to continuously assess cross-language execution delay between C++ and Python modules. Each sample stores four timestamps:
-
-The total round-trip time (RTT) for sample $k$ is computed as
-
-$$
-RTT_k = t_{k}^{(back)} - t_{k}^{(send)}
-$$
-
-Over a rolling window $W$, latency jitter is quantified as the standard deviation:
-
-$$
-\sigma_{RTT}=\sqrt{\frac{1}{|W|}\sum_{k\in W}(RTT_k-\bar{RTT})^2}, \qquad \bar{RTT}=\frac{1}{|W|}\sum_{k\in W}RTT_k
-$$
-
-where $\bar{RTT}$ is the rolling-window mean RTT and $|W|$ is the number of samples in the active window.
-
-Both instantaneous RTT and computed jitter metrics are propagated to the swarm state monitoring interface and used for safety-decision logic under degraded processing conditions.
-
-Fig. 23. Rolling-window RTT measurement and jitter computation between C++ and Python modules, providing real-time latency metrics for safety monitoring and fallback decision logic.
-
-![Fig. 23](<Docs/research_img/fig. 23.png>)
-
-
-10.2 Automatic Fallback Activation
-
-When the mean round-trip time (RTT) computed over the rolling window exceeds a predefined threshold (default $220$ ms), the system activates a degraded-operation state by setting
-
-$$
-\bar{RTT}>RTT_{th} \Rightarrow fallback\_required=\texttt{True}
-$$
-
-Fig. 24. Latency-triggered fallback mechanism where excessive mean RTT activates local geometric collision-cone avoidance, bypassing Python ML inference to maintain bounded real-time control under degraded conditions.
-
-![Fig. 24](<Docs/research_img/fig. 24.png>)
-
-
-In this mode, obstacle avoidance decisions are executed entirely within the local drone process, bypassing the Python-based machine learning inference pipeline. Instead, avoidance is computed using the deterministic geometric collision-cone predictor described in Section VI.
-
-This architectural shift removes cross-language communication latency from the control loop, thereby reducing response variability under processing congestion or network degradation. While this fallback omits learned risk modulation, it preserves core geometric collision avoidance functionality and ensures bounded execution time determined primarily by local computational resources.
-
-10.3 Watchdog Timer
-
-The MLBridge subsystem incorporates a hardware-level watchdog mechanism to supervise responsiveness of the Python processing layer. If no valid response is received within a timeout interval of 1.5 seconds, the watchdog condition is triggered.
-
-Fig. 25. Hardware-level watchdog supervising the MLBridge Python layer; a 1.5 s timeout triggers emergency Return-to-Home (RTL) for drones in motion, ensuring fail-safe recovery under software stalls or crashes.
-
-![Fig. 25](<Docs/research_img/fig. 25.png>)
-
-
-Upon timeout detection, the swarm controller issues an emergency Return-to-Home (RTL) command to all drones currently in the MOVING_TO_TARGET operational state. This safety transition overrides pending trajectory commands and shifts the system into a predefined recovery mode.
-
-The watchdog mechanism mitigates the risk of continued execution of stale or partially computed control commands in the event of a Python process crash or severe runtime stall. By enforcing a bounded response window, the system enhances fail-safe behavior under software-level faults.
-
-XI. RETURN-TO-HOME PROBABILITY MODEL
-
-11.1 Multiplicative Reliability Model
-
-Prior to initiating an autonomous Return-to-Home (RTH) maneuver, the system evaluates the estimated probability of successful mission completion using a multiplicative reliability formulation. The success probability is defined as
-
-$$
-P_{\text{RTH}} = R_b \cdot R_m \cdot R_d \cdot R_w
-$$
-
-where each factor represents a normalized reliability estimate in the interval $[0,1]$, corresponding to energy sufficiency, actuator health, distance feasibility, and environmental wind stability, respectively.
-
-This formulation assumes conditional independence among contributing risk factors, yielding a conservative composite estimate under standard reliability modeling principles.
-
-The decision rule is defined as
-
-$$
-\text{If } P_{\text{RTH}} \ge 0.70 \Rightarrow \text{Execute RTH}, \quad
-\text{else } \Rightarrow \text{Controlled Land-in-Place}.
-$$
-
-The threshold value of 0.70 represents an empirically selected minimum acceptable probability of safe return under operational testing conditions.
-
-Fig. 26. Probabilistic decision framework for autonomous RTH versus controlled landing based on composite reliability estimation.
-
-![Fig. 26](<Docs/research_img/fig. 26.png>)
-
-
-11.2 Individual Factor Computation
-
-Each reliability component in Appendix A.4 is computed as follows:
-
-Battery Reliability
-
-$$
-R_b = \min\!\left(1,\; \frac{E_{\text{avail}}}{E_{\text{return}} + E_{\text{margin}}}\right)
-$$
-
-where $E_{\text{margin}} = 0.05$ (5% safety margin).
-
-Motor Reliability
-
-$$
-R_m = 1 - d_m
-$$
-
-where the degradation fraction $d_m$ is derived from the C++ Differential Immune System's RPM deviation metric.
-
-Distance Reliability
-
-$$
-R_d = \max\!\left(0,\; 1 - \frac{D_{\text{home}}}{D_{\max}}\right)
-$$
-
-Wind Reliability
-
-$$
-R_w = \max\!\left(0,\; 1 - \frac{\|w\|}{w_{\max}}\right)
-$$
-
-where $\|w\|$ denotes wind magnitude.
-
-Worked Example
-
-Consider a drone with:
-
-30% battery remaining
-
-Required return energy: 20% + 5% safety margin
-
-10% motor degradation
-
-Distance to home: 5 km
-
-Maximum reliable range: 10 km
-
-Headwind: 6 m/s
-
-$w_{\max} = 12$ m/s
-
-The resulting factors are:
-
-$$
-R_b = \frac{0.30}{0.20+0.05} = 1.20 \Rightarrow 1.00
-$$
-
-$$
-R_m = 1 - 0.10 = 0.90
-$$
-
-$$
-R_d = 1 - \frac{5}{10} = 0.50
-$$
-
-$$
-R_w = 1 - \frac{6}{12} = 0.50
-$$
-
-Thus,
-
-$$
-P_{\text{RTH}} = 1.00 \times 0.90 \times 0.50 \times 0.50 = 0.225
-$$
-
-Since $0.225 < 0.70$, the decision rule selects Controlled Land-in-Place rather than autonomous Return-to-Home.
-
-This probabilistic evaluation reduces the risk of partial return attempts under marginal energy and environmental conditions, thereby enhancing operational safety.
-
-XII. MACHINE LEARNING DECISION SUPPORT
-
-12.1 Personal ML Models
-
-Each drone maintains an independent MLDecisionSupport model that provides localized risk estimation and avoidance guidance. The model is formulated as a polynomial regression–based classifier trained on mappings of the form
-
-$$
-\phi(\mathbf{x}) \mapsto (\hat{r},\hat{\mathbf{u}}_{avoid})
-$$
-
-Training data are derived from the drone’s own historical flight records, enabling individualized behavioral adaptation.
-
-A second-degree polynomial feature expansion is employed to capture non-linear interactions between spatial proximity, relative velocity, and obstacle characteristics while maintaining computational efficiency. Compared to deep neural network architectures, this approach offers deterministic inference time, reduced memory footprint, and lower onboard processing requirements properties advantageous for embedded aerial platforms.
-
-The PhysicalMLTrainer module supports supervised training from CSV or JSON datasets. A minimum sample threshold (default: 50 samples) is enforced prior to model fitting to reduce overfitting risks associated with sparse data. Trained models are serialized to persistent storage and reloaded during drone initialization, enabling incremental refinement of decision behavior across successive missions.
-
-12.2 ML-Augmented Navigation
-
-The MLNavigationModule integrates machine learning–based risk estimation into the trajectory planning pipeline through a gated decision mechanism. For each planning cycle, the trained MLDecisionSupport model produces a predicted collision risk score along with a recommended avoidance vector.
-
-A maneuver override is triggered when either of the following conditions holds:
-
-$$
-\hat{r}\ge r_{th} \quad \text{or} \quad P_{cone}\ge P_{th}
-$$
-
-In such cases, the drone is redirected toward a temporary waypoint computed along the suggested avoidance vector. This waypoint serves as an intermediate corrective target before resuming the nominal mission trajectory.
-
-If a trained ML model is unavailable (e.g., initial deployment with insufficient training data), the navigation system defaults to the deterministic geometric collision-cone avoidance method described in Section VI. This fallback ensures uninterrupted navigation capability independent of machine learning availability.
-
-By structuring ML inference as an augmentation layer rather than a mandatory control dependency, the system preserves operational continuity and safety under both trained and untrained conditions.
-
-XIII. MATHEMATICAL FRAMEWORK SUMMARY
-
-To ensure traceability between theoretical formulation and implementation, Table II provides a cross-reference of all principal equations with their corresponding software modules in the production codebase.
-
-Table II: System equation cross-reference with implementing module.
-
-XIV. EXPERIMENTAL RESULTS AND VALIDATION
-
-14.1 Acoustic Localization Accuracy
-
-The acoustic localization pipeline was evaluated using the test suite test_acoustic_tdoa_accuracy(). A known impulse source was positioned at $(25,18)$ m within a planar environment instrumented with four spatially separated sensors located at $(0,0)$, $(40,0)$, $(0,40)$, and $(40,40)$ m.
-
-The audio sampling rate was set to 48 kHz. Localization accuracy was assessed using the Euclidean position error metric:
-
-$$
-e_{pos}=\|\hat{\mathbf{x}}-\mathbf{x}_{gt}\|_2
-$$
-
-Across repeated trials, the solver produced localization errors below 3.0 m.
-
-Fig. 27. Estimated versus true source position demonstrating sub-3 m localization accuracy under moderate noise conditions.
-
-![Fig. 27](<Docs/research_img/fig. 27.png>)
-
-
-To evaluate robustness under noise, additive Gaussian noise with standard deviation (normalized amplitude scale) was applied independently to each audio sample. Under these conditions, the computed acoustic confidence metric (Eq. 11) remained above the operational threshold of 0.35, and localization events were successfully registered.
-
-These results demonstrate that the combined GCC-PHAT delay estimation and TRF-based nonlinear least-squares fusion pipeline maintains stable localization performance under moderate sensor noise conditions.
-
-14.2 Blockchain Consensus and Tamper Detection
-
-The distributed ledger replication and validation mechanisms were evaluated using the test suite test_blockchain_consensus(). Three independent FlyingLedger instances were initialized with mutually registered Ed25519 public keys to simulate a minimal multi-node swarm configuration.
-
-In the consensus test, Drone 1 appended a locally generated event block to its ledger and asynchronously broadcast the block to peer nodes. Following propagation (approximately 50 ms under local test conditions), all three ledger instances converged to the same block height and identical block hash at the chain tip, indicating successful replication and deterministic chain consistency.
-
-Tamper resistance was evaluated using the test_block_validation_rejection() routine. In this test, a forged block with a deliberately modified previous_hash field was transmitted to a peer node. The receiving ledger invoked its verification routine and rejected the block due to hash-chain inconsistency. The local chain height remained unchanged, confirming that invalid or tampered blocks do not alter the ledger state.
-
-These results demonstrate correct operation of asynchronous replication, signature validation, and hash-chain integrity enforcement under both normal and adversarial conditions.
-
-Fig. 28. Multi-node ledger consensus and rejection of tampered blocks via hash-chain and signature verification.
-
-![Fig. 28](<Docs/research_img/fig. 28.png>)
-
-
-14.3 Obstacle Avoidance Validation
-
-The obstacle avoidance stack was evaluated across five representative operational scenarios:
-
-Single Dynamic Obstacle: A moving obstacle crossing the drone’s projected trajectory.
-
-Static Obstacle at Zero Velocity (Startup Transient): A stationary obstacle encountered while the drone has negligible initial velocity.
-
-Multi-Obstacle Environment: Concurrent linear-motion and random-walk obstacles interacting within the prediction horizon.
-
-ML-Disabled Fallback Mode: Navigation executed solely via geometric collision-cone prediction without ML assistance.
-
-Mission Resumption After Avoidance: Verification that the drone resumes its original mission target after clearing the avoidance condition.
-
-Across all test cases, the system successfully transitioned into the avoidance-active state upon detection of collision risk. A valid intermediate target waypoint was generated in each scenario, and trajectory updates were propagated to the flight controller. In the mission-resumption test, the system restored nominal navigation once the predicted collision condition was cleared.
-
-These results indicate correct integration of collision detection, velocity blending, fallback logic, and mission continuity mechanisms under diverse environmental configurations.
-
-Fig. 29. Avoidance-enabled trajectory deviation and mission resumption under obstacle encounter.
-
-![Fig. 29](<Docs/research_img/fig. 29.png>)
-
-
-14.4 Latency Monitoring
-
-The latency supervision subsystem was evaluated using targeted stress and statistical consistency tests.
-
-In the test_high_latency_spike() scenario, a synthetic round-trip time (RTT) event of 520 ms was injected into the monitoring pipeline. The system correctly computed
-
-$$
-\bar{RTT}=520\,\text{ms} > RTT_{th}=220\,\text{ms}
-$$
-
-thereby triggering the degraded-operation condition. The internal state flag fallback_required was set to True, confirming proper activation of the local avoidance fallback mechanism described in Section X.
-
-In the test_latency_jitter_std_tracking() routine, three RTT samples with varying processing delays were recorded within the rolling window. The system successfully computed a non-negative jitter standard deviation value according to Eq. (16), and the metric was correctly exposed within the swarm statistics dictionary.
-
-These results demonstrate correct threshold detection, fallback activation logic, and statistical tracking of latency variability under both spike and normal fluctuation conditions.
-
-Fig. 30. Round-trip time (RTT) monitoring over time with threshold-based fallback activation. A synthetic 520 ms latency spike exceeds the 220 ms threshold, triggering degraded-operation mode. RTT subsequently returns below threshold, demonstrating correct detection and recovery behavior.
-
-![Fig. 30](<Docs/research_img/fig. 30.png>)
-
-
-XV. GROUND CONTROL STATION — GUI CONSOLE
-
-The PyQt5-based Ground Control Station (GCS) provides the human operator with a synchronized, real-time visualization of the swarm’s operational state. The interface employs a multi-threaded update architecture in which telemetry acquisition, visualization rendering, and user input handling execute in separate threads. This design prevents graphical rendering delays from interfering with swarm control logic or communication pipelines.
-
-The GUI comprises the following primary components:
-
-Swarm Health Table: Presents per-drone telemetry including battery percentage, motor health status, assigned role (Leader/Follower), flight mode, and current operational state, enabling continuous monitoring of fleet integrity.
-
-Latency Dashboard: Displays a live round-trip time (RTT) plot with computed jitter standard deviation (Eq. 16) and a visual indicator reflecting fallback activation status, providing real-time communication stability insight.
-
-Blockchain Synchronization Panel: Shows per-drone ledger block height, most recent block hash, and integrity verification status to confirm distributed consensus consistency and ledger validity.
-
-Acoustic Detection Map: Renders a two-dimensional heatmap overlay of detected acoustic source positions, with color intensity proportional to the confidence metric (Eq. 11), facilitating rapid spatial interpretation of acoustic events.
-
-Obstacle Visualizer: Displays real-time 2D obstacle trajectories and short-horizon predicted motion paths derived from the kinematic model described in Section VI, supporting situational awareness during avoidance maneuvers.
-
-Mission Control Interface: Provides structured operator commands including takeoff, move-to-target (with per-drone navigation mode selection), and Return-to-Home activation, along with emergency control options.
-
-This integrated console unifies telemetry monitoring, latency supervision, cryptographic ledger verification, acoustic detection, obstacle prediction, and mission command functionality within a single operator interface. By maintaining a clear separation between visualization and autonomous control processes, the system ensures situational transparency without direct interference in distributed decision-making.
-
-Fig. 31. Ground Control Station (GCS) interface showing real-time swarm visualization, latency monitoring, blockchain synchronization status, ML training metrics, and mission control panel. The multi-threaded architecture enables simultaneous telemetry rendering and operator command execution without blocking swarm control logic.
-
-![Fig. 31](<Docs/research_img/fig. 31.png>)
-
-
-XVI. LIMITATIONS AND FUTURE WORK
-
-16.1 Current Limitations
-
-Despite the demonstrated robustness of the proposed framework, several limitations remain.
-
-First, the acoustic TDOA localization subsystem currently operates under a two-dimensional (XY-plane) assumption with fixed altitude. While sufficient for planar mission scenarios, full three-dimensional localization requires a minimum of four non-coplanar sensor nodes to resolve the additional spatial degree of freedom. The existing nonlinear least-squares formulation (Eq. 10) can be extended to 3D by incorporating a Z-coordinate term in the distance constraint, but this extension has not yet been experimentally validated.
-
-Second, the MCSS-based leader election protocol assumes timely and globally observable heartbeat exchanges among drones. Although the system tolerates Byzantine faults within the bounds described in Section IV, it does not yet formally address partial network partitioning scenarios (i.e., split-brain conditions), in which subsets of drones may maintain internal connectivity while being disconnected from others. In such cases, simultaneous independent leader elections could theoretically occur. A consensus-layer enhancement incorporating quorum intersection or view-change protocols would be required to fully mitigate this risk.
-
-16.2 Post-Quantum Cryptography Migration
-
-The current implementation employs Ed25519 for digital signatures. Like other elliptic-curve–based signature schemes, Ed25519 relies on the hardness of the elliptic-curve discrete logarithm problem. Large-scale fault-tolerant quantum computers executing Shor’s algorithm [36], [37] would, in principle, compromise the security assumptions underlying such schemes.
-
-To address long-term cryptographic resilience, the SignatureProvider abstraction layer in flying_ledger.py has been architected to support algorithm agility. This modular interface decouples signature generation and verification logic from the block structure and hash-chain implementation.
-
-Migration to a NIST-standardized post-quantum signature scheme, such as CRYSTALS-Dilithium [37], would require only the implementation of a compatible provider subclass and its registration during drone initialization. Because the block format stores signatures as algorithm-prefixed encoded values, no structural modifications to the ledger schema are required. This design enables forward-compatible cryptographic evolution without altering historical chain data.
-
-16.3 Heterogeneous Swarms and 3D Acoustics
-
-Future development will extend the proposed framework to support heterogeneous multi-agent configurations, including fixed-wing UAVs, ground vehicles, and underwater platforms. This extension requires parameterization of the physics and control layers according to agent-specific dynamics, propulsion characteristics, and environmental constraints. The modular architecture of the SwarmManager and control subsystems facilitates such generalization without altering higher-level coordination logic.
-
-In parallel, full three-dimensional acoustic localization will be incorporated by expanding the current 2D TDOA formulation to include altitude estimation, leveraging non-coplanar sensor configurations as discussed in Section XVI-A.
-
-Another major direction involves energy-aware path planning. By integrating wind field estimation models and battery discharge characteristics into the trajectory optimization layer, the system can adaptively select energy-efficient routes. Preliminary simulation studies suggest potential reductions in total energy consumption on the order of 15–30% during long-duration missions, although comprehensive experimental validation remains part of future work.
-
-XVII. CONCLUSION
-
-This work presented a fully integrated, mathematically grounded, and experimentally validated framework for resilient autonomous drone swarm operation in contested and degraded environments. Unlike fragmented prior approaches that address security, control, or perception independently, the proposed system demonstrates the coordinated integration of distributed consensus, cryptographic integrity, probabilistic safety modeling, adaptive control, machine learning augmentation, and real-time monitoring within a single operational architecture.
-
-At the coordination layer, the MCSS-based leader election protocol provides dynamic, merit-driven authority reassignment with Byzantine fault tolerance, eliminating centralized single-point fragility. At the communication layer, AES-256-GCM encrypted peer-to-peer messaging with replay protection ensures confidentiality and integrity under adversarial conditions. The Flying Ledger introduces tamper-evident, asynchronously replicated blockchain-based telemetry auditing using SHA3-256 hashing and Ed25519 signatures, with forward-compatible abstraction supporting post-quantum migration.
-
-Perception and navigation are reinforced through a hybrid geometric–learning architecture. The collision-cone predictor, second-order kinematic trajectory estimation, and acceleration-constrained steering law provide deterministic avoidance guarantees, while learned aggressiveness scoring and polynomial ML decision support introduce adaptive behavior without sacrificing bounded execution time. The GCC-PHAT–based acoustic TDOA engine enables sub-3-meter localization performance without GPS reliance, supported by nonlinear least-squares fusion and latency-aware fallback mechanisms.
-
-At the actuator level, the C++ Differential Immune System detects motor degradation via rolling-window telemetry analysis and performs adaptive thrust redistribution and PID gain retuning, enabling graceful degradation rather than catastrophic failure. The latency monitoring subsystem supervises cross-language execution jitter and activates deterministic fallback control or emergency return-to-home when safety thresholds are exceeded. A probabilistic Return-to-Home model further formalizes mission termination decisions based on energy, actuator health, distance feasibility, and environmental wind conditions.
-
-Experimental validation confirms correct operation of acoustic localization, ledger consensus and tamper rejection, obstacle avoidance under diverse scenarios, and latency-triggered fallback behavior. Traceability from formal equations to implementation modules establishes reproducibility and verifiability across the entire stack.
-
-The resulting architecture demonstrates that secure, decentralized, and safety-aware swarm autonomy is achievable through disciplined systems engineering and modular mathematical design. While current limitations include 2D acoustic modeling and simplified partition handling, the framework is structurally prepared for heterogeneous multi-agent expansion, 3D localization, energy-aware path planning, and post-quantum cryptographic migration.
-
-This work therefore contributes not merely a collection of algorithms, but a coherent operational blueprint for resilient swarm deployment in GPS-denied, communication-disrupted, or adversarial environments, with direct applicability to defense reconnaissance, disaster response, search-and-rescue, and other safety-critical domains.
-
-APPENDIX
-
-APPENDIX A.1
-
-Mathematical Derivations and Formal Proof Sketches
-
-Given the suitability score
-
-$$
-S_i = w_b B_i + w_m M_i + w_l L_i
-$$
-
-with
-
-$$
-B_i, M_i, L_i \in [0,1], \qquad w_b,w_m,w_l \ge 0, \qquad w_b+w_m+w_l=1.
-$$
-
-Since each normalized metric lies in $[0,1]$, it follows:
-
-$$
-0 \le S_i \le 1.
-$$
-
-If at most $f$ nodes behave arbitrarily, consensus on the maximum score is preserved under majority broadcast assumptions consistent with classical Byzantine fault tolerance bounds.
-
-$$
-N \ge 3f+1 \quad \Rightarrow \quad f \le \left\lfloor\frac{N-1}{3}\right\rfloor.
-$$
-
-Leader re-election latency upper bound:
-
-$$
-T_{\text{re-elect}} \le 2T_{hb} + T_{prop}.
-$$
-
-In simulation:
-
-$$
-T_{hb}=0.5\,\text{s},\; T_{prop}\approx0.2\,\text{s} \Rightarrow T_{\text{re-elect}}\approx1.2\,\text{s}.
-$$
-
-A.2 Collision Cone Geometric Condition
-
-Relative position:
-
-$$
-\mathbf{r}=\mathbf{p}_o-\mathbf{p}_d
-$$
-
-Relative velocity:
-
-$$
-\mathbf{v}_{rel}=\mathbf{v}_o-\mathbf{v}_d
-$$
-
-Half-angle of collision cone:
-
-$$
-\theta_c = \sin^{-1}\!\left(\frac{R_{eff}}{\|\mathbf{r}\|}\right), \quad \|\mathbf{r}\|>R_{eff}
-$$
-
-Collision condition:
-
-$$
-\angle(\mathbf{v}_{rel},-\mathbf{r}) \le \theta_c
-$$
-
-Time-to-closest-approach constraint:
-
-$$
-\text{TCA} = -\frac{\mathbf{r}\cdot\mathbf{v}_{rel}}{\|\mathbf{v}_{rel}\|^2}
-$$
-
-Reject if:
-
-$$
-\text{TCA} > 4\,\text{s} \;\;\text{or}\;\; \text{TCA}<0.
-$$
-
-A.3 TDOA Hyperbolic Constraint
-
-Distance difference:
-
-$$
-\Delta d_{ij}=c\,\tau_{ij}
-$$
-
-Hyperbolic constraint:
-
-$$
-\|\mathbf{x}-\mathbf{s}_i\| - \|\mathbf{x}-\mathbf{s}_j\| = c\,\tau_{ij}
-$$
-
-Nonlinear least-squares objective:
-
-$$
-\mathbf{x}^*=\arg\min_{\mathbf{x}} \sum_{(i,j)}\left(\|\mathbf{x}-\mathbf{s}_i\| - \|\mathbf{x}-\mathbf{s}_j\| - c\,\tau_{ij}\right)^2
-$$
-
-A.4 RTH Reliability Sensitivity
-
-Taking logarithm:
-
-$$
-\ln P_{\text{RTH}}=\ln R_b + \ln R_m + \ln R_d + \ln R_w
-$$
-
-Sensitivity:
-
-$$
-\frac{\partial \ln P_{\text{RTH}}}{\partial R_k}=\frac{1}{R_k}, \quad k\in\{b,m,d,w\}
-$$
-
-Thus battery reliability dominates under low-energy conditions.
-
-APPENDIX B
-
-System Configuration Parameters
-
-B.1 Default Operational Constants
-
-| Parameter | Symbol | Default Value | Unit | Notes |
-|---|---|---:|---|---|
-| Heartbeat interval | $T_{hb}$ | 0.5 | s | Leader liveness monitoring |
-| Score propagation delay (typical) | $T_{prop}$ | 0.2 | s | Inter-node score broadcast latency |
-| Max leader re-election latency (observed) | $T_{re-elect}$ | 1.2 | s | Derived from $2T_{hb}+T_{prop}$ |
-| Replay validation rule | $seq_{in}$ | $> seq_{last}$ | - | Strict monotonic acceptance |
-| TCA rejection horizon | $TCA_{max}$ | 4.0 | s | Ignore non-imminent collision events |
-| Obstacle prediction timestep | $\Delta t$ | 0.3 | s | Discrete rollout interval |
-| Obstacle prediction horizon | $T_{pred}$ | 3.0 | s | Forward planning window |
-| Path lookahead horizon | $T_{look}$ | 1.2 | s | Low-level reference generation |
-| RTT fallback threshold (control) | $RTT_{th}$ | 220 | ms | Activates local geometric fallback |
-| RTT fallback threshold (acoustic) | $RTT_{th}^{ac}$ | 280 | ms | Uses nearest 3 sensors only |
-| Watchdog timeout | $T_{wd}$ | 1.5 | s | Triggers emergency RTL for moving drones |
-| Motor degradation threshold | $d_m$ | 0.10 | fraction | 10% RPM deviation criterion |
-| RTH decision threshold | $P_{RTH}$ | 0.70 | probability | RTH if $P_{RTH}\ge0.70$ |
-| RTH energy safety margin | $E_{margin}$ | 0.05 | fraction | 5% reserve margin |
-| Max wind reference | $w_{max}$ | 12 | m/s | Wind reliability normalization |
-| Max mission radius | $D_{max}$ | 10 | km | Distance reliability normalization |
-
-B.2 Cryptographic Parameters
-
-| Item | Algorithm / Setting | Value |
-|---|---|---|
-| Symmetric encryption | AES-256-GCM | 256-bit key |
-| Key derivation | PBKDF2-HMAC-SHA256 | 100,000 iterations |
-| Derived key length | KDF output | 32 bytes |
-| Packet AAD | Replay sequence number | Monotonic per sender |
-| Block hash | SHA3-256 | 256-bit digest |
-| Digital signature | Ed25519 | 64-byte signature |
-| Signature encoding | Base64 with algorithm prefix | Example: `Ed25519:<base64>` |
-
-APPENDIX C
-
-Experimental Test Environment
-
-C.1 Simulation Platform
-
-| Component | Version / Spec | Purpose |
-|---|---|---|
-| Python runtime | 3.11+ | Swarm logic, GUI, ML, acoustic, ledger |
-| C++ toolchain | C++17 | Real-time control and HAL layer |
-| Nonlinear optimizer | SciPy TRF (soft-L1) | TDOA least-squares localization |
-| Acoustic sampling | 48 kHz | GCC-PHAT delay estimation |
-| Vehicle model | Quadrotor kinematic model | Simulation dynamics |
-
-C.2 Hardware Assumptions
-
-| Item | Assumption |
-|---|---|
-| Rotor layout | 4-rotor quadcopter geometry |
-| Nominal hover thrust | 2.45 N per motor |
-| Maximum wind threshold | 12 m/s |
-| Maximum reliable mission radius | 10 km |
-
-APPENDIX D
-
-Software Architecture File Map
-
-| File / Module | Role |
-|---|---|
-| `main.py` | Application entrypoint and mode bootstrap |
-| `gui.py` | Ground control station UI, visualization, command panels |
-| `swarm_manager.py` | Core swarm orchestration, coordination, mission state |
-| `drone.py` | Per-drone state, behavior, local autonomy logic |
-| `flying_ledger.py` | Distributed tamper-evident flight ledger |
-| `communication_manager.py` | Inter-drone event bus and message routing |
-| `acoustic_tracking.py` | Acoustic signal processing and source estimation |
-| `dynamic_obstacle.py` | Obstacle prediction, collision-cone risk, replanning |
-| `ml_decision_support.py` | Per-drone ML model training/inference support |
-| `latency_monitor.py` | RTT/jitter monitoring and fallback trigger logic |
-
-APPENDIX E
-
-Safety and Threat Model Assumptions
-
-| Threat / Assumption | Model |
-|---|---|
-| Packet manipulation | Adversary may inject, replay, or drop packets |
-| GNSS integrity | Adversary may spoof or jam GPS signals |
-| Byzantine participation | Up to $\lfloor(N-1)/3\rfloor$ arbitrary faulty nodes |
-| Acoustic channel noise | Additive Gaussian noise model |
-| Wind disturbance | Bounded quasi-constant disturbance |
-| Trust anchors | Drone public keys are pre-registered for signature verification |
-
-APPENDIX F
-
-Limitations of Formal Model
-
-| Limitation | Impact |
-|---|---|
-| Acoustic localization currently 2D | No altitude (Z) estimation in current TDOA solve |
-| Split-brain network partitions not fully resolved | Concurrent independent leader elections remain possible |
-| ML model assumes stationary data distribution | Domain shift can reduce risk prediction fidelity |
-| RTH reliability factors treated as independent | Ignores cross-coupled environmental and actuator dependencies |
-
-XIX. REFERENCES
-
-[1] S. Hayat, E. Yanmaz, and R. Muzaffar, “Survey on unmanned aerial vehicle networks for civil applications,” IEEE Commun. Surveys Tuts., vol. 18, no. 4, pp. 2624–2661, 2016.
-
-[2] E. Şahin, “Swarm robotics: From sources of inspiration to domains of application,” in Swarm Robotics Workshop, 2004.
-
-[3] M. Dorigo, M. Birattari, and M. Brambilla, “Swarm robotics,” Autonomous Robots, vol. 17, no. 2–3, pp. 111–113, 2014.
-
-[4] L. Lamport, R. Shostak, and M. Pease, “The Byzantine generals problem,” ACM Trans. Program. Lang. Syst., vol. 4, no. 3, pp. 382–401, 1982.
-
-[5] M. Castro and B. Liskov, “Practical Byzantine fault tolerance,” ACM Trans. Comput. Syst., vol. 20, no. 4, pp. 398–461, 2002.
-
-[6] N. Lynch, Distributed Algorithms. San Francisco, CA, USA: Morgan Kaufmann, 1996.
-
-[7] M. Asadpour et al., “Distributed consensus and coordination in UAV swarms: Recent advances and challenges,” IEEE Access, vol. 11, pp. 35214–35237, 2023.
-
-[8] S. Park and D. Kim, “Resilient distributed leader election in dynamic UAV networks,” IEEE Trans. Aerosp. Electron. Syst., vol. 60, no. 2, pp. 1456–1469, 2024.
-
-[9] T. Humphreys et al., “Assessing vulnerability of UAVs to GPS spoofing attacks,” in Proc. IEEE Aerospace Conf., 2008.
-
-[10] M. Psiaki and T. Humphreys, “GNSS spoofing and detection,” Proc. IEEE, vol. 104, no. 6, pp. 1258–1270, 2016.
-
-[11] D. He et al., “Security and privacy in UAV communication networks,” IEEE Wireless Commun., vol. 26, no. 5, pp. 64–69, 2019.
-
-[12] R. Mitchell and I.-R. Chen, “Cybersecurity in unmanned aerial vehicle systems: A survey,” IEEE Commun. Surveys Tuts., vol. 24, no. 4, pp. 2341–2371, 2022.
-
-[13] J. Sun, L. Yan, and Y. Zhang, “Trust management for secure UAV swarms in adversarial environments,” IEEE Trans. Inf. Forensics Security, vol. 19, pp. 1024–1037, 2024.
-
-[14] D. McGrew and J. Viega, “The Galois/Counter Mode of operation (GCM),” in NIST Modes Workshop, 2004.
-
-[15] NIST, “Advanced Encryption Standard (AES),” FIPS PUB 197, 2001.
-
-[16] NIST, “SHA-3 Standard: Permutation-Based Hash and Extendable-Output Functions,” FIPS PUB 202, 2015.
-
-[17] D. J. Bernstein et al., “High-speed high-security signatures,” J. Cryptographic Engineering, vol. 2, no. 2, pp. 77–89, 2012.
-
-[18] L. Wang and K. Liu, “Secure lightweight blockchain architecture for UAV networks,” IEEE Access, vol. 13, pp. 5567–5581, 2025.
-
-[19] S. Nakamoto, “Bitcoin: A peer-to-peer electronic cash system,” 2008.
-
-[20] C. Cachin, “Architecture of the Hyperledger blockchain fabric,” 2016.
-
-[21] C. Knapp and G. Carter, “The generalized correlation method for estimation of time delay,” IEEE Trans. Acoust., Speech Signal Process., vol. 24, no. 4, pp. 320–327, 1976.
-
-[22] H. Brandstein and D. Ward, Microphone Arrays: Signal Processing Techniques and Applications. Springer, 2001.
-
-[23] J. Chen, J. Benesty, and Y. Huang, “Time delay estimation in room acoustic environments,” IEEE Trans. Audio Speech Lang. Process., vol. 14, no. 3, pp. 870–883, 2006.
-
-[24] H. Zhao et al., “Low-latency acoustic source localization for drone swarms using robust GCC variants,” IEEE Sensors J., vol. 25, no. 3, pp. 4121–4134, 2025.
-
-[25] P. Fiorini and Z. Shiller, “Motion planning in dynamic environments using velocity obstacles,” Int. J. Robot. Res., vol. 17, no. 7, pp. 760–772, 1998.
-
-[26] J. van den Berg et al., “Reciprocal velocity obstacles for real-time multi-agent navigation,” in Proc. IEEE ICRA, 2008.
-
-[27] A. Gupta et al., “Energy-aware path planning for UAV swarms in dynamic wind fields,” IEEE Trans. Intell. Transp. Syst., vol. 25, no. 1, pp. 987–999, 2024.
-
-[28] Y. Zhang and J. Jiang, “Bibliographical review on fault-tolerant control systems,” Annu. Rev. Control, vol. 32, no. 2, pp. 229–252, 2008.
-
-[29] J. Boskovic, S. Li, and R. Mehra, “Fault-tolerant control of UAVs,” IEEE Trans. Control Syst. Technol., vol. 12, no. 5, pp. 655–662, 2004.
-
-[30] M. Mueller and R. D’Andrea, “Stability and control of a quadrocopter despite propeller loss,” in Proc. IEEE ICRA, 2014.
-
-[31] T. Rahman and P. Mehta, “Fault-tolerant control strategies for quadrotor UAVs under actuator degradation,” IEEE Trans. Control Syst. Technol., vol. 33, no. 1, pp. 115–128, 2025.
-
-[32] G. Buttazzo, Hard Real-Time Computing Systems. Springer, 2011.
-
-[33] J. Liu, Real-Time Systems. Pearson, 2000.
-
-[34] C. Bishop, Pattern Recognition and Machine Learning. Springer, 2006.
-
-[35] T. Hastie, R. Tibshirani, and J. Friedman, The Elements of Statistical Learning. Springer, 2009.
-
-[36] P. Shor, “Polynomial-time algorithms for prime factorization and discrete logarithms on a quantum computer,” SIAM J. Comput., vol. 26, no. 5, pp. 1484–1509, 1997.
-
-[37] NIST, “Post-Quantum Cryptography Standardization,” 2022.
-
-[38] Y. Li, H. Zhang, and X. Shen, “Secure and resilient UAV swarm networking: A survey,” IEEE Internet Things J., vol. 9, no. 18, pp. 16745–16767, 2022.
+The repository's legacy `research_paper.md` contained unverified claims of production-ready flying safety, unconditional meter-level positioning, strong Byzantine fault tolerance, and sub-50 ms control latency. This manuscript intentionally **does not adopt those claims**. Its data lineage is the raw GitHub Actions experiment archive, not the legacy text. Figure 1 is a schematic of the software/test boundary; Figures 2–5 are regenerated from the archived measured software outcomes, with no smoothed or invented series. Readers should consult the full 378-row data table for subgroup denominators and trial-level details.
