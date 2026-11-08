@@ -119,6 +119,21 @@ class MeshTests(unittest.TestCase):
         self.assertEqual(follower.delivered_commands, [])
         self.assertIsNone(follower.leader)
 
+    def test_failed_leader_cannot_reenter_recovery_vote_from_late_telemetry(self):
+        self.elect_all()
+        self.clock.now += 7.0
+        follower = self.nodes[1]
+        follower.expire_leader()
+        self.assertIn(1, follower._suspected_failed_leaders)
+        # A delayed or replayed signed health report must not re-enable a
+        # previously expired leader as candidate in the recovery view.
+        packet = self.nodes[0].publish_health(HealthReport(99, 100, 100))
+        follower.receive(packet)
+        follower.publish_health(HealthReport(80, 90, 80))
+        self.assertEqual(follower.choose_candidate(), 2)
+        with self.assertRaises(ValueError):
+            follower.begin_election(candidate=1)
+
     def test_equivocation_is_detected(self):
         voter = self.nodes[3]
         first = voter.begin_election(candidate=1)
