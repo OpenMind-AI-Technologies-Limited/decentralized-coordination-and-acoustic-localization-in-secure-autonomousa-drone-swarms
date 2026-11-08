@@ -42,6 +42,33 @@ class SimulatedMotionSafety:
             raise ValueError("Invalid obstacle radius")
         self.risk_model.add_obstacle(*[float(x) for x in xyz], float(radius_m))
 
+    def vertical_escape_waypoint(self, drone, target_xyz: Sequence[float],
+                                 peer_positions: Mapping[int, Sequence[float]],
+                                 quorum_available: bool = True,
+                                 observed_latency_ms: Optional[float] = None) -> Optional[tuple]:
+        """First climb above peers if a straight planned segment is unsafe.
+
+        This is only a local simulation heuristic. The intended final target
+        must be rechecked with live neighbor positions after the climb.
+        """
+        origin = drone.current_position
+        start = (float(origin.x), float(origin.y), float(origin.z))
+        try:
+            desired_z = float(target_xyz[2])
+        except (ValueError, IndexError, TypeError):
+            return None
+        elevated_z = min(100., float(drone.MAX_ALTITUDE),
+                         max(start[2], desired_z) + max(12., self.min_separation_m + 4.))
+        if elevated_z <= start[2] + 1.:
+            return None
+        waypoint = (start[0], start[1], elevated_z)
+        decision = self.assess(
+            drone, waypoint, peer_positions,
+            observed_latency_ms=observed_latency_ms,
+            quorum_available=quorum_available,
+        )
+        return waypoint if decision.allowed else None
+
     def assess(self, drone, target_xyz: Sequence[float],
                peer_positions: Mapping[int, Sequence[float]],
                observed_latency_ms: Optional[float] = None,
