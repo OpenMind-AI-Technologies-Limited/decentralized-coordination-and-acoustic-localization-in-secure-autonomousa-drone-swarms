@@ -85,7 +85,7 @@ class ResilientSwarmIntegrationTests(unittest.TestCase):
 
     def test_obstacle_risk_blocks_simulation_motion(self):
         self.sim.add_simulated_obstacle((7., 0., 10.), 4.)
-        self.sim._dispatch(self.drones[1], {"kind": "goto", "target_xyz": [20., 0., 10.]})
+        self.sim._dispatch(self.drones[1], {"kind": "goto", "target_xyz": [13., 0., 10.]})
         latest = self.sim.events[-1]
         self.assertFalse(latest["accepted"])
         self.assertEqual(latest["reason"], "projected_obstacle_collision")
