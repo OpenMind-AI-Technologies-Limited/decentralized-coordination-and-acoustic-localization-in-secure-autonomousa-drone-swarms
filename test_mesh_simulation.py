@@ -76,6 +76,28 @@ class MeshSimulatorTests(unittest.TestCase):
         self.assertTrue({2, 3, 4}.issubset(accepted))
         self.assertTrue(all(e.get("epoch") is not None for e in self.sim.events if e["accepted"]))
 
+    def test_certified_cooperative_task_allocation(self):
+        self.sim = DroneMeshSimulation(self.drones)
+        self.sim.start()
+        for drone in self.drones.values():
+            drone.is_armed = True
+            drone.current_position.z = 10.0
+            drone.flight_mode = FlightMode.HOVER
+        self.assertEqual(self.sim.wait_for_leader(9), 1)
+        plan = self.sim.command_tasks({
+            "inspection-a": (2.0, 2.0, 10.0),
+            "inspection-b": (20.0, 2.0, 10.0),
+        })
+        self.assertEqual(plan["unassigned"], [])
+        self.assertEqual(len(plan["assigned"]), 2)
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and not {
+            "inspection-a", "inspection-b"
+        }.issubset({event.get("task_id") for event in self.sim.events if event["accepted"]}):
+            time.sleep(0.05)
+        executed = {event.get("task_id") for event in self.sim.events if event["accepted"]}
+        self.assertTrue({"inspection-a", "inspection-b"}.issubset(executed))
+
     def test_election_fails_closed_without_quorum(self):
         self.sim = DroneMeshSimulation(self.drones)
         with self.assertRaises(PermissionError):
