@@ -143,7 +143,19 @@ def main():
         action="store_true",
         help="Run test suite only and exit",
     )
+    parser.add_argument(
+        "--mesh-simulation",
+        action="store_true",
+        help="Run experimental quorum-controlled Drone simulation without real hardware or GUI",
+    )
     args = parser.parse_args()
+
+    if args.mesh_simulation:
+        if args.test:
+            parser.error("--test and --mesh-simulation cannot be combined")
+        from mesh_simulation import demo
+        demo()
+        return
 
     if args.test:
         suite = unittest.defaultTestLoader.discover(".", pattern="test*.py")
