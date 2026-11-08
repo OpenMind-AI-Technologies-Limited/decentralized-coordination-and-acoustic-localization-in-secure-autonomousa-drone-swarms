@@ -148,6 +148,9 @@ def run_election_trial(nodes, seed, scenario, *, loss_rate=0.15):
 
     if scenario == "leader_failure" and agents[1].leader == 1:
         clock.now += agents[2].timeout_s + 0.2
+        # A stopped member cannot send stale certificates or receive gossip.
+        net.blocked |= {(1, i) for i in range(2, nodes+1)}
+        net.blocked |= {(i, 1) for i in range(2, nodes+1)}
         for i in range(2, nodes+1):
             agents[i].expire_leader()
         for i in range(2, nodes+1):
@@ -163,7 +166,7 @@ def run_election_trial(nodes, seed, scenario, *, loss_rate=0.15):
 
     for i in voters:
         agent = agents[i]
-        if agent.certificate is not None:
+        if (scenario != "leader_failure" or i != 1) and agent.certificate is not None:
             net.send(i, agent.publish_health(agent.health[i][0]))
     net.drain()
     live = set(voters)
@@ -172,6 +175,7 @@ def run_election_trial(nodes, seed, scenario, *, loss_rate=0.15):
     if scenario == "quorum_partition":
         live -= set(range(1, n_split+1))
     expected = (None if scenario == "minority_partition" else
+                n_split + 1 if scenario == "quorum_partition" else
                 2 if scenario == "leader_failure" else 1)
     certificates = {
         i: (agents[i].certificate.epoch, agents[i].leader)
