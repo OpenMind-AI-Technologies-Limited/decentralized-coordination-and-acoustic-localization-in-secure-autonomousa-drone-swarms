@@ -68,7 +68,8 @@ def source_trials(trials: int, seed: int, noises=(0.0, 0.02, 0.05)) -> list[dict
             ),
             "tdoa_fit_residual_m": (
                 float(row["tdoa_residual_rmse_m"])
-                if row["tdoa_residual_rmse_m"] != "" else None
+                if row["tdoa_residual_rmse_m"] not in ("", None)
+                and math.isfinite(float(row["tdoa_residual_rmse_m"])) else None
             ),
         })
     return converted
