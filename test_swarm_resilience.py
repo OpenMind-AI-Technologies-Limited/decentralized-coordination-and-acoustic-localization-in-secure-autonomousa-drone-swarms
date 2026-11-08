@@ -69,6 +69,23 @@ class ResilientSwarmIntegrationTests(unittest.TestCase):
         self.assertEqual(self.sim.audit_ledgers[2].height, 1)
         self.assertTrue(all(d.flight_mode is FlightMode.HOVER for d in self.drones.values()))
 
+    def test_gps_free_known_beacon_receiver_estimate_is_audited_not_applied(self):
+        drone = self.drones[2]
+        old_position = (drone.current_position.x, drone.current_position.y)
+        beacons = {11: (0., 0.), 12: (40., 0.), 13: (0., 40.), 14: (40., 40.)}
+        times = {11: 0., 12: .12, 13: .25, 14: .37}
+        arrivals = {
+            i: times[i] + .05 + math.dist(old_position, point) / SPEED_OF_SOUND_MPS
+            for i, point in beacons.items()
+        }
+        result = self.sim.localize_receiver_from_beacons(
+            2, beacons, times, arrivals, 0.00001)
+        self.assertTrue(result["localized"], result)
+        self.assertFalse(result["gps_input_used"])
+        self.assertEqual(result["audit"]["quorum"], 3)
+        self.assertEqual((drone.current_position.x, drone.current_position.y), old_position)
+        self.assertEqual(drone.flight_mode, FlightMode.HOVER)
+
     def test_measured_peer_rtt_is_real_signed_udp_round_trip(self):
         latency_ms = self.sim.measure_peer_rtt(2, timeout_s=2.0)
         self.assertGreaterEqual(latency_ms, 0.0)
