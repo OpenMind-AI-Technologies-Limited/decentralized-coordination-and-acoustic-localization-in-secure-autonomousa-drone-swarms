@@ -34,6 +34,7 @@ class MeshRuntime:
         self._stop = threading.Event()
         self._last_heartbeat = 0.0
         self._last_election = time.monotonic()
+        self._election_retries = 0
         self.logger = logging.getLogger(f"MeshRuntime.{node.node_id}")
         self.node.on_command = self._on_certified_command
 
@@ -76,13 +77,16 @@ class MeshRuntime:
                     self.logger.exception("Could not publish local health")
                 self._last_heartbeat = now
             try:
-                packet = self.transport.receive(timeout=0.04)
-                if packet:
+                packet = self.transport.receive(timeout=0.02)
+                for _ in range(64):
+                    if not packet:
+                        break
                     try:
                         for output in self.node.receive(packet):
                             self.transport.send(output)
                     except Exception as exc:
                         self.logger.debug("Rejected peer packet: %s", exc)
+                    packet = self.transport.receive(timeout=0.0)
             except OSError:
                 if not self._stop.is_set():
                     self.logger.exception("Mesh receive error")
@@ -95,9 +99,17 @@ class MeshRuntime:
                             if self.node.clock() - seen_at <= self.node.timeout_s)
                 if fresh >= self.node.quorum:
                     try:
-                        self.transport.send(self.node.begin_election())
-                    except (ValueError, OSError) as exc:
-                        self.logger.warning("Election retry blocked: %s", exc)
+                        if self.node.epoch in self.node.voted_epochs and self._election_retries < 3:
+                            packet = self.node.retransmit_vote()
+                            self._election_retries += 1
+                        else:
+                            packet = self.node.begin_election()
+                            self._election_retries = 0
+                        if packet is not None:
+                            self.transport.send(packet)
+                    except (ValueError, OSError, RuntimeError) as exc:
+                        if not self._stop.is_set():
+                            self.logger.warning("Election retry blocked: %s", exc)
                 self._last_election = now
 
     def stop(self):
