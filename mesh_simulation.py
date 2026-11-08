@@ -48,6 +48,7 @@ class DroneMeshSimulation:
         self._safety_stop = threading.Event()
         self._safety_thread: Optional[threading.Thread] = None
         self._owned_drone_ids: set[int] = set()
+        self._deferred_motions: dict[int, dict] = {}
         self._runtimes: dict[int, MeshRuntime] = {}
         self._transports: dict[int, UdpPeerTransport] = {}
         # Persisted identities are opt-in. Each drone must have exactly one
@@ -137,6 +138,21 @@ class DroneMeshSimulation:
                 observed_latency_ms=self.observed_latency_ms,
                 quorum_available=self._runtimes[node_id].node.has_fresh_quorum(),
             )
+            if not decision.allowed and decision.reason == "path_too_close_to_neighbor":
+                waypoint = self.motion_safety.vertical_escape_waypoint(
+                    drone, xyz, peers,
+                    observed_latency_ms=self.observed_latency_ms,
+                    quorum_available=self._runtimes[node_id].node.has_fresh_quorum(),
+                )
+                if waypoint is not None and drone.goto(Position(*waypoint)):
+                    self._deferred_motions[node_id] = dict(action)
+                    event.update({
+                        "accepted": True, "path_replanned": True,
+                        "target_xyz": list(waypoint), "requested_target_xyz": list(xyz),
+                        "epoch": action.get("coordination_epoch"),
+                        "task_id": action.get("task_id"),
+                    })
+                    return
             if not decision.allowed:
                 event["fallback"] = decision.fallback
                 event["predicted_collision_risk"] = decision.predicted_risk
@@ -148,6 +164,7 @@ class DroneMeshSimulation:
                 raise ValueError(decision.reason)
             if not drone.goto(Position(*xyz)):
                 raise ValueError("Drone rejected target under its own flight constraints")
+            self._deferred_motions.pop(node_id, None)
             event.update({"accepted": True, "target_xyz": list(xyz),
                           "epoch": action.get("coordination_epoch"),
                           "task_id": action.get("task_id")})
@@ -186,15 +203,23 @@ class DroneMeshSimulation:
                 continue
             if (drone.battery_level <= self.motion_safety.battery_reserve_pct or
                     any(not motor.operational for motor in drone.motors)):
+                self._deferred_motions.pop(node_id, None)
                 if drone.flight_mode in (FlightMode.HOVER, FlightMode.FLYING):
                     drone.return_to_home("Local battery/motor safety guard")
                 continue
+            if drone.flight_mode == FlightMode.HOVER and node_id in self._deferred_motions:
+                saved = self._deferred_motions.pop(node_id)
+                if (runtime.node.leader is not None and runtime.node.certificate is not None
+                        and runtime.node.has_fresh_quorum()
+                        and saved.get("coordination_epoch") == runtime.node.certificate.epoch):
+                    self._dispatch(drone, saved)
             if drone.flight_mode != FlightMode.FLYING:
                 continue
             available = runtime.node.has_fresh_quorum() and runtime.node.leader is not None
             latency_bad = (self.observed_latency_ms is not None and
                            self.observed_latency_ms > self.motion_safety.latency_limit_ms)
             if not available or latency_bad:
+                self._deferred_motions.pop(node_id, None)
                 drone.target_position = None
                 drone.flight_mode = FlightMode.HOVER
                 with self._lock:
@@ -219,6 +244,7 @@ class DroneMeshSimulation:
         runtime = self._runtimes[node_id]
         runtime.stop()
         self.drones[node_id].stop()
+        self._deferred_motions.pop(node_id, None)
         self._owned_drone_ids.discard(node_id)
 
     def leader(self) -> Optional[int]:
@@ -411,6 +437,7 @@ class DroneMeshSimulation:
             self._safety_thread = None
         for runtime in self._runtimes.values():
             runtime.stop()
+        self._deferred_motions.clear()
         for node_id in list(self._owned_drone_ids):
             self.drones[node_id].stop()
             self._owned_drone_ids.discard(node_id)
