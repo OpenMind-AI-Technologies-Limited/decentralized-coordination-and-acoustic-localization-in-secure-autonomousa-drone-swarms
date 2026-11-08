@@ -188,6 +188,14 @@ class MeshNode:
             self.positions[self.node_id] = pos
         return self.channel.seal("heartbeat", self.epoch, payload)
 
+    def has_fresh_quorum(self) -> bool:
+        """Only trust a control directive while a fresh registered quorum is visible."""
+        now = self.clock()
+        return sum(
+            1 for member, (_, last_seen) in self.health.items()
+            if member in self.roster and 0 <= now - last_seen <= self.timeout_s
+        ) >= self.quorum
+
     def choose_candidate(self) -> Optional[int]:
         eligible = ((node_id, report.score()) for node_id, (report, seen_at) in self.health.items()
                     if node_id in self.roster and self.clock() - seen_at <= self.timeout_s)
@@ -256,6 +264,8 @@ class MeshNode:
 
     def _install_certificate(self, cert: ElectionCertificate) -> bool:
         if not self._verify_certificate(cert) or cert.epoch < self._min_authority_epoch:
+            return False
+        if cert.epoch < self.epoch and self.certificate is None:
             return False
         if self.certificate is not None and cert.epoch < self.certificate.epoch:
             return False
@@ -326,6 +336,10 @@ class MeshNode:
                 self._install_certificate(cert)
             return []
         if kind == "command":
+            if self.leader_timed_out():
+                self.expire_leader()
+            if not self.has_fresh_quorum():
+                return []
             cert_data = body.get("certificate")
             if not isinstance(cert_data, dict):
                 return []
@@ -336,7 +350,8 @@ class MeshNode:
                 return []
             if self.certificate and epoch < self.certificate.epoch:
                 return []
-            self._install_certificate(cert)
+            if not self._install_certificate(cert):
+                return []
             action = body.get("action")
             if isinstance(action, dict):
                 record = {"leader": sender, "epoch": epoch, "action": action}
@@ -347,8 +362,12 @@ class MeshNode:
         return []
 
     def issue_command(self, action: dict) -> bytes:
+        if self.leader_timed_out():
+            self.expire_leader()
         if self.certificate is None or self.leader != self.node_id:
             raise PermissionError("Only a quorum-certified leader may send commands")
+        if not self.has_fresh_quorum():
+            raise PermissionError("Cannot command without a fresh registered quorum")
         return self.channel.seal("command", self.epoch,
                                  {"certificate": self.certificate.to_dict(), "action": dict(action)})
 
