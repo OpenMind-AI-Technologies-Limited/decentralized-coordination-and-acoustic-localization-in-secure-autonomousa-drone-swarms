@@ -17,6 +17,7 @@ from typing import Mapping, Optional
 
 from drone import Drone, FlightMode, Position
 from swarm_mesh import HealthReport, MeshNode, SwarmIdentity
+from swarm_identity_store import IdentityStore, VoteJournal
 from swarm_runtime import MeshRuntime
 from swarm_tasks import allocate_tasks
 from swarm_transport import UdpPeerTransport
@@ -28,7 +29,8 @@ class DroneMeshSimulation:
     def __init__(self, drones: Mapping[int, Drone], *,
                  heartbeat_interval_s: float = 0.12,
                  election_retry_s: float = 0.65,
-                 heartbeat_timeout_s: float = 1.5):
+                 heartbeat_timeout_s: float = 1.5,
+                 identity_dir: Optional[str] = None):
         if len(drones) < 4 or len(drones) > 50:
             raise ValueError("Demo requires between 4 and 50 fixed-member simulation nodes")
         self.drones = dict(drones)
@@ -43,7 +45,14 @@ class DroneMeshSimulation:
         self._owned_drone_ids: set[int] = set()
         self._runtimes: dict[int, MeshRuntime] = {}
         self._transports: dict[int, UdpPeerTransport] = {}
-        self._identities = {node_id: SwarmIdentity(node_id) for node_id in self.drones}
+        # Persisted identities are opt-in. Each drone must have exactly one
+        # trusted state writer; never share the directory between hosts.
+        self._identity_store = IdentityStore(identity_dir) if identity_dir is not None else None
+        self._identities = {
+            node_id: (self._identity_store.load_or_create(node_id)
+                      if self._identity_store is not None else SwarmIdentity(node_id))
+            for node_id in self.drones
+        }
         roster = {node_id: ident.public_bytes() for node_id, ident in self._identities.items()}
         group_key = os.urandom(32)  # Ephemeral demo secret. No persistent enrollment implied.
         try:
@@ -55,6 +64,8 @@ class DroneMeshSimulation:
                 node = MeshNode(
                     self._identities[node_id], roster, group_key,
                     heartbeat_timeout_s=heartbeat_timeout_s,
+                    vote_journal=(VoteJournal(identity_dir, self._identities[node_id])
+                                  if self._identity_store is not None else None),
                 )
                 drone = self.drones[node_id]
                 self._runtimes[node_id] = MeshRuntime(
