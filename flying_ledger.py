@@ -239,10 +239,15 @@ class FlyingLedger:
             return self.signature_provider.verify(pub, block.block_hash.encode("utf-8"), block.signature)
 
     def append_replicated_block(self, block_data: dict) -> bool:
-        block = Block.from_dict(block_data)
-        if not self.verify_block(block):
+        try:
+            block = Block.from_dict(block_data)
+        except (KeyError, TypeError, ValueError, OverflowError):
             return False
+        # Atomic check-then-append: concurrent replicas must not both attach
+        # blocks to the same parent or silently extend a fork.
         with self._lock:
+            if not self.verify_block(block):
+                return False
             self.chain.append(block)
             self.replicated_blocks_by_drone.setdefault(block.drone_id, []).append(block)
         return True
@@ -254,7 +259,7 @@ class FlyingLedger:
             for i in range(1, len(self.chain)):
                 prev = self.chain[i - 1]
                 block = self.chain[i]
-                if block.previous_hash != prev.block_hash:
+                if block.index != prev.index + 1 or block.previous_hash != prev.block_hash:
                     return False
                 expected_hash = self.compute_block_hash(
                     index=block.index,
@@ -265,5 +270,10 @@ class FlyingLedger:
                     previous_hash=block.previous_hash,
                 )
                 if expected_hash != block.block_hash:
+                    return False
+                author_key = self.peer_public_keys.get(block.drone_id)
+                if not author_key or not self.signature_provider.verify(
+                    author_key, block.block_hash.encode("utf-8"), block.signature
+                ):
                     return False
         return True
