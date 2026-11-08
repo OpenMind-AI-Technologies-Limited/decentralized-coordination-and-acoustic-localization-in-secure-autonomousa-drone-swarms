@@ -43,8 +43,10 @@ def plot_evidence(summary: list[dict], directory) -> list[str]:
                 continue
             x.append(item["nodes"])
             y.append(value["rate"])
-            low.append(value["rate"] - value["lower"])
-            high.append(value["upper"] - value["rate"])
+            # Wilson bounds at 0/1 can differ by ~1e-17 due to
+            # floating-point rounding. Matplotlib requires nonnegative yerr.
+            low.append(max(0.0, value["rate"] - value["lower"]))
+            high.append(max(0.0, value["upper"] - value["rate"]))
         if x:
             ax.errorbar(x, y, yerr=[low, high], marker="o", capsize=3,
                         label=scenario.replace("_", " "))
