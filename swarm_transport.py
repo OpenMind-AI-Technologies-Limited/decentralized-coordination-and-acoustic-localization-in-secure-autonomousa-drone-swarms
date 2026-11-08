@@ -19,6 +19,10 @@ class UdpPeerTransport:
         self._lock = threading.RLock()
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Windows reports ICMP Port Unreachable as WSAECONNRESET on UDP recv().
+        # A crashed peer must not disable message reception from healthy peers.
+        if hasattr(socket, "SIO_UDP_CONNRESET"):
+            self._socket.ioctl(socket.SIO_UDP_CONNRESET, False)
         self._socket.bind(bind)
         self.address = self._socket.getsockname()
         self._closed = False
@@ -52,7 +56,7 @@ class UdpPeerTransport:
             if not 0 < len(packet) <= self.MAX_PACKET_BYTES:
                 return None
             return packet
-        except (socket.timeout, BlockingIOError):
+        except (socket.timeout, BlockingIOError, ConnectionResetError):
             return None
         except OSError:
             if self._closed:
