@@ -54,6 +54,9 @@ jobs:
             test_swarm_coordination.py test_swarm_identity_store.py \
             test_mesh_simulation.py test_swarm_deployment.py \
             test_swarm_dashboard.py test_swarm_tasks.py test_swarm_scaling.py \
+            acoustic_quality.py swarm_safety.py quorum_audit.py \
+            test_acoustic_quality.py test_swarm_safety.py test_quorum_audit.py \
+            test_swarm_resilience.py \
             tests/gui_smoke_test.py
 
       - name: Run full coordination and existing regression suites
@@ -69,7 +72,11 @@ jobs:
             test_swarm_identity_store.py \
             test_swarm_deployment.py \
             test_swarm_dashboard.py \
-            test_swarm_scaling.py
+            test_swarm_scaling.py \
+            test_acoustic_quality.py \
+            test_quorum_audit.py \
+            test_swarm_safety.py \
+            test_swarm_resilience.py
 
       - name: Upload Python test artifacts
         if: always()
