@@ -23,6 +23,7 @@ from swarm_tasks import allocate_tasks
 from swarm_transport import UdpPeerTransport
 from quorum_audit import QuorumAuditLedger
 from acoustic_tracking import AcousticTrackingSystem
+from swarm_safety import SimulatedMotionSafety
 
 
 class DroneMeshSimulation:
@@ -82,6 +83,8 @@ class DroneMeshSimulation:
                 transport.close()
             raise
         self.acoustic_tracker = AcousticTrackingSystem()
+        self.motion_safety = SimulatedMotionSafety()
+        self.observed_latency_ms: Optional[float] = None
         self.audit_ledgers = {
             node_id: QuorumAuditLedger(
                 self._identities[node_id], roster, store_directory=identity_dir)
@@ -122,6 +125,20 @@ class DroneMeshSimulation:
                 raise ValueError("Drone not explicitly armed locally")
             if drone.flight_mode not in (FlightMode.HOVER, FlightMode.FLYING):
                 raise ValueError("Drone not in a controllable flight state")
+            peers = {
+                i: (d.current_position.x, d.current_position.y, d.current_position.z)
+                for i, d in self.drones.items()
+                if i != node_id and not self._runtimes[i]._stop.is_set()
+            }
+            decision = self.motion_safety.assess(
+                drone, xyz, peers,
+                observed_latency_ms=self.observed_latency_ms,
+                quorum_available=self._runtimes[node_id].node.has_fresh_quorum(),
+            )
+            if not decision.allowed:
+                event["fallback"] = decision.fallback
+                event["predicted_collision_risk"] = decision.predicted_risk
+                raise ValueError(decision.reason)
             if not drone.goto(Position(*xyz)):
                 raise ValueError("Drone rejected target under its own flight constraints")
             event.update({"accepted": True, "target_xyz": list(xyz),
@@ -182,6 +199,20 @@ class DroneMeshSimulation:
                 return winner
             time.sleep(0.05)
         return None
+
+    def add_simulated_obstacle(self, xyz: tuple[float, float, float], radius_m: float) -> None:
+        self.motion_safety.add_obstacle(xyz, radius_m)
+
+    def set_observed_latency_ms(self, latency_ms: Optional[float]) -> None:
+        """Accept a genuinely observed RTT from a diagnostic source, if available.
+
+        No default synthetic bridge timings are treated as measurements.
+        """
+        if latency_ms is not None and (
+            not math.isfinite(float(latency_ms)) or float(latency_ms) < 0
+        ):
+            raise ValueError("Invalid latency observation")
+        self.observed_latency_ms = None if latency_ms is None else float(latency_ms)
 
     def audit_event(self, payload: dict) -> dict:
         """Quorum-commit an intent in this simulation's independently signed log.
