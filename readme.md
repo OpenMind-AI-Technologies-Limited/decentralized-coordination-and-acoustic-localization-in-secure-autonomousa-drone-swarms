@@ -26,12 +26,15 @@ A separate per-drone coordination runtime is available on this development branc
 - `test_swarm_coordination.py`: adversarial, UDP delivery, leader-failover and formation checks.
 - `mesh_simulation.py`: optional adapter using actual `Drone` kinematics and state, independent certified mesh command transport, and strict rejection of physical MAVSDK connections.
 - `test_mesh_simulation.py`: real simulator control-path, safety refusal and crash recovery integration tests.
+- `swarm_tasks.py`: deterministic cooperative task allocation using fresh authenticated peer telemetry; not distributed task consensus.
+- `test_swarm_tasks.py`: feasibility, deterministic tie behavior and 50-member assignment logic checks.
 
 Run **loopback-only coordination + actual Drone physics** (not physical UAV connections):
 
 ```bash
-python -m pip install cryptography pytest
-python -m pytest -q test_swarm_coordination.py test_mesh_simulation.py
+python -m pip install -r requirements.txt
+python -m pip install pytest
+python -m pytest -q test_swarm_coordination.py test_mesh_simulation.py test_swarm_tasks.py
 python mesh_demo.py                    # transport-only demo
 python mesh_simulation.py              # actual simulated Drone physics
 python main.py --mesh-simulation       # same opt-in physics demo via entry point
