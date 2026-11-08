@@ -18,6 +18,7 @@ from typing import Mapping, Optional
 from drone import Drone, FlightMode, Position
 from swarm_mesh import HealthReport, MeshNode, SwarmIdentity
 from swarm_runtime import MeshRuntime
+from swarm_tasks import allocate_tasks
 from swarm_transport import UdpPeerTransport
 
 
@@ -173,6 +174,37 @@ class DroneMeshSimulation:
             "heading": list(heading_xy), "spacing_m": float(spacing_m),
         })
         return leader_id
+
+    def command_tasks(self, tasks: Mapping[str, tuple[float, float, float]]) -> dict:
+        """Send a certified greedy task plan based on fresh signed telemetry."""
+        leader_id = self.leader()
+        if leader_id is None:
+            raise PermissionError("No quorum-certified task coordinator available")
+        node = self._runtimes[leader_id].node
+        now = node.clock()
+        fresh_health = {
+            peer: health for peer, (health, seen_at) in node.health.items()
+            if peer in node.roster and 0 <= now - seen_at <= node.timeout_s
+        }
+        fresh_positions = {peer: node.positions[peer] for peer in fresh_health if peer in node.positions}
+        allocations = allocate_tasks(fresh_positions, fresh_health, tasks)
+        command_map = {
+            str(peer): {"task_id": task_id, "target_xyz": list(target)}
+            for peer, assignments in allocations.items()
+            for task_id, target in assignments
+        }
+        assigned_ids = {detail["task_id"] for detail in command_map.values()}
+        unassigned = sorted(task_id for task_id in tasks if task_id not in assigned_ids)
+        if command_map:
+            self._runtimes[leader_id].broadcast_action({
+                "kind": "task_assignment",
+                "assignments": command_map,
+            })
+        return {
+            "leader": leader_id,
+            "assigned": command_map,
+            "unassigned": unassigned,
+        }
 
     def stop(self):
         if not self.running:
