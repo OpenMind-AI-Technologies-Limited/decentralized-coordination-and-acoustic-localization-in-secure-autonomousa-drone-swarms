@@ -21,6 +21,8 @@ from swarm_identity_store import IdentityStore, VoteJournal
 from swarm_runtime import MeshRuntime
 from swarm_tasks import allocate_tasks
 from swarm_transport import UdpPeerTransport
+from quorum_audit import QuorumAuditLedger
+from acoustic_tracking import AcousticTrackingSystem
 
 
 class DroneMeshSimulation:
@@ -79,6 +81,12 @@ class DroneMeshSimulation:
             for transport in self._transports.values():
                 transport.close()
             raise
+        self.acoustic_tracker = AcousticTrackingSystem()
+        self.audit_ledgers = {
+            node_id: QuorumAuditLedger(
+                self._identities[node_id], roster, store_directory=identity_dir)
+            for node_id in self.drones
+        }
 
     def _health(self, drone: Drone):
         motors = list(drone.motors)
@@ -175,11 +183,84 @@ class DroneMeshSimulation:
             time.sleep(0.05)
         return None
 
+    def audit_event(self, payload: dict) -> dict:
+        """Quorum-commit an intent in this simulation's independently signed log.
+
+        This coordinator collects votes in memory; it is NOT a separate
+        peer-to-peer ledger consensus transport or proof of BFT liveness.
+        """
+        leader_id = self.leader()
+        if leader_id is None:
+            raise PermissionError("No certified quorum leader for audit event")
+        local = self._runtimes[leader_id].node
+        cert = local.certificate
+        if cert is None or not local.has_fresh_quorum():
+            raise PermissionError("Audit leader certificate or quorum expired")
+        active = [
+            i for i, runtime in self._runtimes.items()
+            if not runtime._stop.is_set() and
+            i in local.health and
+            0 <= local.clock() - local.health[i][1] <= local.timeout_s
+        ]
+        if len(active) < local.quorum:
+            raise PermissionError("Insufficient live members to sign audit event")
+        # Sync a recovering follower before asking it to sign the next height.
+        for i in active:
+            if i != leader_id and self.audit_ledgers[i].height < self.audit_ledgers[leader_id].height:
+                self.audit_ledgers[i].synchronize(self.audit_ledgers[leader_id].commits)
+        proposal = self.audit_ledgers[leader_id].propose(dict(payload), cert.to_dict())
+        ballots = [self.audit_ledgers[i].vote(proposal) for i in active]
+        if len(ballots) < local.quorum:
+            raise PermissionError("Insufficient quorum audit approvals")
+        for i in active:
+            if not self.audit_ledgers[i].commit(proposal, ballots):
+                raise RuntimeError("Audit ledger rejected certified commit")
+        return {
+            "height": self.audit_ledgers[leader_id].height,
+            "hash": proposal["hash"], "approvals": len(ballots),
+            "quorum": local.quorum, "author": leader_id,
+        }
+
+    def reconcile_audit(self, node_id: int) -> int:
+        """Catch an offline replica up from the current certified leader."""
+        leader_id = self.leader()
+        if leader_id is None:
+            raise PermissionError("No certified quorum for audit recovery")
+        return self.audit_ledgers[node_id].synchronize(
+            self.audit_ledgers[leader_id].commits)
+
+    def localize_acoustic(
+        self, signals: dict, sample_rate_hz: float,
+        clock_uncertainty_s: Optional[float] = None,
+        latency_ms: float = 0.0,
+    ) -> dict:
+        """Estimate sound-source XY; never auto-command a physical drone."""
+        positions = {i: (d.current_position.x, d.current_position.y)
+                     for i, d in self.drones.items()}
+        result = self.acoustic_tracker.localize(
+            signals, positions, sample_rate_hz, latency_ms, 280.0,
+            clock_uncertainty_s=clock_uncertainty_s,
+        )
+        if result.get("detected") and result.get("confidence", 0.0) >= 0.65:
+            if self.leader() is not None:
+                result["audit"] = self.audit_event({
+                    "kind": "acoustic_source_observation",
+                    "source_xy": result["source_position"],
+                    "tdoa_residual_rmse_m": result["tdoa_residual_rmse_m"],
+                    "clock_sync_verified": result["clock_sync_verified"],
+                })
+        return result
+
     def command_formation(self, pattern: str, leader_position: tuple[float, float, float],
                           heading_xy: tuple[float, float], spacing_m: float = 12.0) -> int:
         leader_id = self.leader()
         if leader_id is None:
             raise PermissionError("No quorum-certified leader available")
+        self.audit_event({
+            "kind": "formation_intent", "pattern": pattern,
+            "leader_position": list(leader_position),
+            "heading_xy": list(heading_xy), "spacing_m": float(spacing_m),
+        })
         self._runtimes[leader_id].broadcast_action({
             "kind": "formation", "pattern": pattern,
             "leader_position": list(leader_position),
@@ -208,6 +289,10 @@ class DroneMeshSimulation:
         assigned_ids = {detail["task_id"] for detail in command_map.values()}
         unassigned = sorted(task_id for task_id in tasks if task_id not in assigned_ids)
         if command_map:
+            self.audit_event({
+                "kind": "task_allocation_intent",
+                "assignments": command_map, "unassigned": unassigned,
+            })
             self._runtimes[leader_id].broadcast_action({
                 "kind": "task_assignment",
                 "assignments": command_map,
