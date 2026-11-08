@@ -62,8 +62,11 @@ jobs:
             mesh_demo.py \
             mesh_simulation.py \
             swarm_tasks.py \
+            swarm_identity_store.py \
+            test_swarm_identity_store.py \
             test_mesh_simulation.py \
             test_swarm_tasks.py \
+            test_swarm_identity_store.py \
             test_swarm_coordination.py \
             test_ledger_and_acoustic.py \
             tests/gui_smoke_test.py
