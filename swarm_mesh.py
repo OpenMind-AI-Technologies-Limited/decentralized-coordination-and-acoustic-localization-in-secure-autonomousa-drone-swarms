@@ -159,6 +159,7 @@ class MeshNode:
         self.timeout_s = heartbeat_timeout_s
         self.channel = AuthenticatedChannel(identity, self.roster, group_key, clock=clock)
         self.epoch = 0
+        self._min_authority_epoch = 0
         self.certificate: Optional[ElectionCertificate] = None
         self.leader: Optional[int] = None
         self.last_leader_heartbeat: Optional[float] = None
@@ -190,7 +191,7 @@ class MeshNode:
         return ordered[0][0] if ordered else None
 
     def begin_election(self, candidate: Optional[int] = None) -> bytes:
-        self.epoch += 1
+        self.epoch = max(self.epoch + 1, self._min_authority_epoch)
         selected = self.choose_candidate() if candidate is None else int(candidate)
         if selected not in self.roster:
             raise ValueError("No eligible registered candidate")
@@ -242,7 +243,7 @@ class MeshNode:
         return True
 
     def _install_certificate(self, cert: ElectionCertificate) -> bool:
-        if not self._verify_certificate(cert) or cert.epoch < self.epoch:
+        if not self._verify_certificate(cert) or cert.epoch < max(self.epoch, self._min_authority_epoch):
             return False
         if self.certificate and self.certificate.epoch == cert.epoch and self.certificate.candidate != cert.candidate:
             raise ValueError("Conflicting quorum certificates: protocol invariant violated")
@@ -301,7 +302,8 @@ class MeshNode:
                 return []
             cert = ElectionCertificate(int(cert_data["epoch"]), int(cert_data["candidate"]),
                                        {int(k): str(v) for k, v in cert_data["proofs"].items()})
-            if not self._verify_certificate(cert) or sender != cert.candidate or epoch != cert.epoch:
+            if (not self._verify_certificate(cert) or sender != cert.candidate or epoch != cert.epoch
+                    or epoch < self._min_authority_epoch):
                 return []
             if self.certificate and epoch < self.certificate.epoch:
                 return []
@@ -320,6 +322,16 @@ class MeshNode:
             raise PermissionError("Only a quorum-certified leader may send commands")
         return self.channel.seal("command", self.epoch,
                                  {"certificate": self.certificate.to_dict(), "action": dict(action)})
+
+    def expire_leader(self) -> None:
+        """Fence an expired leader and reject its old certificate and commands."""
+        if not self.leader_timed_out():
+            return
+        self.health.pop(self.leader, None)
+        self._min_authority_epoch = max(self._min_authority_epoch, self.epoch + 1)
+        self.leader = None
+        self.certificate = None
+        self.last_leader_heartbeat = None
 
     def leader_timed_out(self) -> bool:
         return (self.leader is not None and self.last_leader_heartbeat is not None
