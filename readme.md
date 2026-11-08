@@ -99,8 +99,13 @@ python main.py --mesh-gui
 python main.py --mesh-simulation
 python acoustic_benchmark.py --seed 26 --trials 12 --out experiment_outputs/acoustic
 python -m pytest -q test_acoustic_quality.py test_acoustic_benchmark.py \
-    test_quorum_audit.py test_swarm_safety.py test_swarm_resilience.py
+    test_quorum_audit.py test_ledger_integrity.py \
+    test_swarm_safety.py test_swarm_model_validation.py test_swarm_resilience.py
 ```
+
+The simulator exposes optional holdout-validated per-drone telemetry velocity
+predictions as **read-only advisories**. Trained regression does not command
+motion or replace deterministic obstacle, health, quorum and separation rules.
 
 The simulator can measure actual localhost **signed UDP round-trip latency**;
 legacy `MLBridge` timings remain synthetic and are not silently treated as
