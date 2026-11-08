@@ -343,6 +343,20 @@ class MeshNode:
                                            {int(k): str(v) for k, v in cert_data["proofs"].items()})
                 self._install_certificate(cert)
             self.health[sender] = (report, self.clock())
+            # A previously suspected member can rejoin only as a follower
+            # after learning the current certified view and proving its
+            # identity with a fresh signed heartbeat from that view.
+            if (sender in self._suspected_failed_leaders
+                    and self.certificate is not None
+                    and sender != self.leader
+                    and not self.leader_timed_out()
+                    and self.has_fresh_quorum()
+                    and epoch == self.certificate.epoch
+                    and isinstance(body.get("certificate"), dict)
+                    and int(body["certificate"].get("candidate", -1)) == self.leader
+                    and int(body["certificate"].get("epoch", -1)) == self.certificate.epoch
+                    and -2.0 <= self.clock() - float(msg["time"]) <= 3.0):
+                self._suspected_failed_leaders.discard(sender)
             if "position" in body:
                 pos = tuple(float(x) for x in body["position"])
                 if len(pos) != 3 or not all(math.isfinite(x) for x in pos):
