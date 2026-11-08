@@ -28,19 +28,21 @@ A separate per-drone coordination runtime is available on this development branc
 - `test_mesh_simulation.py`: real simulator control-path, safety refusal and crash recovery integration tests.
 - `swarm_tasks.py`: deterministic cooperative task allocation using fresh authenticated peer telemetry; not distributed task consensus.
 - `test_swarm_tasks.py`: feasibility, deterministic tie behavior and 50-member assignment logic checks.
+- `swarm_identity_store.py`: optional local persistent Ed25519 identity with atomic single-writer vote journal; do not commit state files.
+- `test_swarm_identity_store.py`: restart, corruption, file-permission and vote-equivocation tests.
 
 Run **loopback-only coordination + actual Drone physics** (not physical UAV connections):
 
 ```bash
 python -m pip install -r requirements.txt
 python -m pip install pytest
-python -m pytest -q test_swarm_coordination.py test_mesh_simulation.py test_swarm_tasks.py
+python -m pytest -q test_swarm_coordination.py test_mesh_simulation.py test_swarm_tasks.py test_swarm_identity_store.py
 python mesh_demo.py                    # transport-only demo
 python mesh_simulation.py              # actual simulated Drone physics
 python main.py --mesh-simulation       # same opt-in physics demo via entry point
 ```
 
-The existing GUI and `SwarmManager` continue to use their original in-process control path. The experimental mesh adapter integrates with the existing `Drone` physics engine only, not with the default GUI or legacy manager; it is **not certified for physical flight**. Private keys and roster are ephemeral demo credentials, not production enrollment. Leader commands require a valid election certificate and recent heartbeats from a quorum. Quorum certificate safety assumes fixed, preauthenticated membership and honest nodes signing at most one candidate per epoch; **full Byzantine consensus, byzantine liveness, fault-safe autopilot integration and hardware validation are not claimed**. See [coordination research audit](Docs/COORDINATION_RESEARCH_AUDIT.md) for an explicit code-to-paper discrepancy list.
+An optional `DroneMeshSimulation(..., identity_dir=".mesh-state")` uses persistent per-node identities and a single-writer election journal in the chosen directory. It is a local prototype store, not a hardware-backed keystore. Never commit or share that directory. The existing GUI and `SwarmManager` continue to use their original in-process control path. The experimental mesh adapter integrates with the existing `Drone` physics engine only, not with the default GUI or legacy manager; it is **not certified for physical flight**. Private keys and roster are ephemeral demo credentials, not production enrollment. Leader commands require a valid election certificate and recent heartbeats from a quorum. Quorum certificate safety assumes fixed, preauthenticated membership and honest nodes signing at most one candidate per epoch; **full Byzantine consensus, byzantine liveness, fault-safe autopilot integration and hardware validation are not claimed**. See [coordination research audit](Docs/COORDINATION_RESEARCH_AUDIT.md) for an explicit code-to-paper discrepancy list.
 
 ## Security
 
