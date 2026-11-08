@@ -69,7 +69,7 @@ class BallotJournalTests(unittest.TestCase):
         reopened.cast(1, 2)  # Identical vote may be retransmitted
         with self.assertRaises(PermissionError):
             reopened.cast(1, 3)
-        with self.assertRaises(PermissionError):
+        with self.assertRaises(ValueError):
             reopened.cast(0, 2)
         reopened.cast(2, 3)
         with self.assertRaises(PermissionError):
