@@ -31,11 +31,11 @@ Run the tests and a full exploratory evidence sweep:
 ```bash
 python -m pip install numpy scipy cryptography pytest
 python -m pytest -q test_swarm_experiments.py
-python swarm_experiment_runner.py --sizes 5 10 20 50 --trials 20 --seed 2026 --out experiment_outputs/swarm
+python swarm_experiment_runner.py --sizes 5 10 20 50 --trials 20 --seed 2026 --figures --out experiment_outputs/swarm
 ```
 
-The output contains per-trial CSV/JSON, a manifest, 95% confidence-interval
-summaries and REPORT.md. CI also generates 6 repeats per scenario and uploads
+The output contains per-trial CSV/JSON, a SHA-256 manifest, 95% confidence-interval
+summaries, REPORT.md, and optional observed-data PNG/SVG plots. CI also generates 6 repeats per scenario and uploads
 the actual observed files as GitHub Actions artifacts.
 
 These are **not** physical flight, real RF latency, certified BFT liveness,
