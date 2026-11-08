@@ -141,6 +141,11 @@ class DroneMeshSimulation:
             node = runtime.node
             if runtime._stop.is_set() or node.leader is None or node.certificate is None:
                 continue
+            # A locally crashed process must never be reported as an active leader
+            # while other nodes are still waiting for its heartbeat lease to expire.
+            candidate_runtime = self._runtimes.get(node.leader)
+            if candidate_runtime is None or candidate_runtime._stop.is_set():
+                continue
             if not node.has_fresh_quorum():
                 continue
             votes[node.leader] = votes.get(node.leader, 0) + 1
