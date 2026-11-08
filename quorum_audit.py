@@ -214,8 +214,10 @@ class QuorumAuditLedger:
     def synchronize(self, committed_records: list[dict]) -> int:
         accepted = 0
         for record in committed_records:
+            before = self.height
             if self._commit_verified(record):
-                accepted += 1
+                if self.height > before:
+                    accepted += 1
             else:
                 break
         return accepted
