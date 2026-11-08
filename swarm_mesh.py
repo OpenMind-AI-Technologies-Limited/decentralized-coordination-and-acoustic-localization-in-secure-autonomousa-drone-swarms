@@ -315,7 +315,13 @@ class MeshNode:
         return True
 
     def _install_certificate(self, cert: ElectionCertificate) -> bool:
-        if not self._verify_certificate(cert) or cert.epoch < self._min_authority_epoch:
+        if cert.epoch < self._min_authority_epoch:
+            return False
+        # An identical previously verified certificate is already trusted.
+        # Do not re-run N-f expensive Ed25519 checks just to refresh state.
+        if self.certificate is not None and cert == self.certificate:
+            return True
+        if not self._verify_certificate(cert):
             return False
         # A valid committed certificate may arrive after a node tentatively
         # advanced an election view without obtaining a certificate. The
@@ -373,7 +379,13 @@ class MeshNode:
                 cert_data = body["certificate"]
                 cert = ElectionCertificate(int(cert_data["epoch"]), int(cert_data["candidate"]),
                                            {int(k): str(v) for k, v in cert_data["proofs"].items()})
-                self._install_certificate(cert)
+                # Receiving a redundant view announcement never installs a
+                # new proof; only genuinely newer/conflicting views need
+                # validation. Commands still explicitly verify their proof.
+                if (self.certificate is None or
+                        (cert.epoch, cert.candidate) !=
+                        (self.certificate.epoch, self.certificate.candidate)):
+                    self._install_certificate(cert)
             self.health[sender] = (report, self.clock())
             # A previously suspected member can rejoin only as a follower
             # after learning the current certified view and proving its
@@ -432,7 +444,10 @@ class MeshNode:
             cert = ElectionCertificate(epoch=int(body["epoch"]), candidate=int(body["candidate"]),
                                        proofs={int(k): str(v) for k, v in body["proofs"].items()})
             if cert.epoch == epoch:
-                self._install_certificate(cert)
+                if (self.certificate is None or
+                        (cert.epoch, cert.candidate) !=
+                        (self.certificate.epoch, self.certificate.candidate)):
+                    self._install_certificate(cert)
             return []
         if kind == "command":
             if self.leader_timed_out():
