@@ -21,6 +21,8 @@ import numpy as np
 from scipy.optimize import least_squares
 from scipy.signal import correlate
 
+from acoustic_quality import validate_acoustic_array, validate_tdoa_physics
+
 
 SPEED_OF_SOUND_MPS = 343.0
 
@@ -34,31 +36,42 @@ class AudioSensor:
 class CrossCorrelationEngine:
     """Delay estimation with GCC-PHAT backed by scipy correlation."""
 
-    def estimate_delay_seconds(self, sig_i: np.ndarray, sig_j: np.ndarray, sample_rate_hz: float) -> float:
+    def estimate_delay_seconds(self, sig_i: np.ndarray, sig_j: np.ndarray,
+                               sample_rate_hz: float,
+                               max_delay_s: Optional[float] = None) -> float:
         sig_i = np.asarray(sig_i, dtype=np.float64)
         sig_j = np.asarray(sig_j, dtype=np.float64)
         if sig_i.size == 0 or sig_j.size == 0 or sample_rate_hz <= 0:
             return 0.0
 
-        # GCC-PHAT in frequency domain.
+        if not np.all(np.isfinite(sig_i)) or not np.all(np.isfinite(sig_j)):
+            raise ValueError("Nonfinite acoustic samples")
+        if max_delay_s is None:
+            max_samples = min(sig_i.size, sig_j.size) - 1
+        else:
+            if not math.isfinite(max_delay_s) or max_delay_s <= 0:
+                raise ValueError("Invalid physical delay bound")
+            max_samples = max(1, min(min(sig_i.size, sig_j.size) - 1,
+                                     int(math.ceil(max_delay_s * sample_rate_hz))))
+        # Correct sign: positive lag means j arrived later than i.
+        # Compare peak locations only inside the physically plausible interval.
         n = sig_i.size + sig_j.size
-        f_i = np.fft.rfft(sig_i, n=n)
-        f_j = np.fft.rfft(sig_j, n=n)
-        cross = f_i * np.conjugate(f_j)
+        cross = np.fft.rfft(sig_j, n=n) * np.conjugate(np.fft.rfft(sig_i, n=n))
         cross /= (np.abs(cross) + 1e-12)
         gcc = np.fft.irfft(cross, n=n)
-        max_shift = n // 2
-        gcc = np.concatenate((gcc[-max_shift:], gcc[: max_shift + 1]))
-        gcc_shift = int(np.argmax(np.abs(gcc)) - max_shift)
+        window = np.concatenate((gcc[-max_samples:], gcc[:max_samples + 1]))
+        gcc_lag = int(np.argmax(np.abs(window))) - max_samples
 
-        # Direct cross-correlation estimate.
-        corr = correlate(sig_j, sig_i, mode="full", method="fft")
-        lag = int(np.argmax(corr) - (sig_i.size - 1))
-        peak_direct = float(np.max(np.abs(corr))) if corr.size else 0.0
-        peak_gcc = float(np.max(np.abs(gcc))) if gcc.size else 0.0
-
-        shift = lag if peak_direct >= peak_gcc else gcc_shift
-        return float(shift) / float(sample_rate_hz)
+        direct = correlate(sig_j, sig_i, mode="full", method="fft")
+        center = sig_i.size - 1
+        bounded = direct[center - max_samples:center + max_samples + 1]
+        direct_lag = int(np.argmax(np.abs(bounded))) - max_samples
+        # Do NOT compare unnormalized direct and PHAT peak amplitudes;
+        # they have different scales. Prefer direct correlation for sparse
+        # high-contrast impulse arrivals, PHAT otherwise.
+        contrast = float(np.max(np.abs(bounded))) / (float(np.mean(np.abs(bounded))) + 1e-12)
+        lag = direct_lag if contrast > 12.0 else gcc_lag
+        return float(lag) / float(sample_rate_hz)
 
 
 class TDOAEstimator:
@@ -70,6 +83,7 @@ class TDOAEstimator:
         signals: Dict[int, np.ndarray],
         sample_rate_hz: float,
         reference_id: Optional[int] = None,
+        sensor_positions: Optional[Dict[int, Tuple[float, float]]] = None,
     ) -> Dict[int, float]:
         if not signals:
             return {}
@@ -82,7 +96,12 @@ class TDOAEstimator:
         for drone_id in ids:
             if drone_id == ref_id:
                 continue
-            delay = self.correlation_engine.estimate_delay_seconds(ref_signal, signals[drone_id], sample_rate_hz)
+            max_delay = None
+            if sensor_positions is not None and ref_id in sensor_positions and drone_id in sensor_positions:
+                baseline_m = math.dist(sensor_positions[ref_id], sensor_positions[drone_id])
+                max_delay = baseline_m / SPEED_OF_SOUND_MPS + 2.0 / sample_rate_hz
+            delay = self.correlation_engine.estimate_delay_seconds(
+                ref_signal, signals[drone_id], sample_rate_hz, max_delay_s=max_delay)
             delays[drone_id] = delay
         return delays
 
@@ -162,6 +181,7 @@ class AcousticTrackingSystem:
         sample_rate_hz: float,
         total_round_trip_ms: float,
         acoustic_latency_limit_ms: float,
+        clock_uncertainty_s: Optional[float] = None,
     ) -> dict:
         ids = sorted(set(signals.keys()) & set(sensor_positions.keys()))
         if len(ids) < 3:
@@ -172,6 +192,21 @@ class AcousticTrackingSystem:
                 "local_only": False,
             }
 
+        quality = validate_acoustic_array(
+            {i: signals[i] for i in ids},
+            {i: sensor_positions[i] for i in ids},
+            sample_rate_hz, clock_uncertainty_s=clock_uncertainty_s,
+        )
+        if not quality["valid"]:
+            return {"detected": False, "reason": quality["reason"],
+                    "confidence": 0.0, "local_only": False,
+                    "estimate_type": "sound_source_xy"}
+        if (not math.isfinite(float(total_round_trip_ms)) or
+                not math.isfinite(float(acoustic_latency_limit_ms)) or
+                acoustic_latency_limit_ms <= 0):
+            return {"detected": False, "reason": "invalid_latency",
+                    "confidence": 0.0, "local_only": False,
+                    "estimate_type": "sound_source_xy"}
         local_only = float(total_round_trip_ms) > float(acoustic_latency_limit_ms)
         if local_only:
             ids = ids[:3]
@@ -182,7 +217,12 @@ class AcousticTrackingSystem:
 
         used_signals = {i: signals[i] for i in ids}
         used_positions = {i: sensor_positions[i] for i in ids}
-        delays = self.tdoa_estimator.estimate_delays(used_signals, sample_rate_hz=sample_rate_hz)
+        delays = self.tdoa_estimator.estimate_delays(
+            used_signals, sample_rate_hz=sample_rate_hz, sensor_positions=used_positions)
+        if not validate_tdoa_physics(used_positions, delays, sample_rate_hz=sample_rate_hz):
+            return {"detected": False, "reason": "physically_impossible_delays",
+                    "confidence": 0.0, "local_only": local_only,
+                    "estimate_type": "sound_source_xy"}
         source_xy, confidence, rmse = self.fusion_engine.estimate_source_xy(used_positions, delays)
 
         if source_xy is None:
@@ -201,4 +241,9 @@ class AcousticTrackingSystem:
             "delays": {str(k): float(v) for k, v in delays.items()},
             "local_only": local_only,
             "used_sensor_ids": ids,
+            "estimate_type": "sound_source_xy",
+            "self_localization_supported": False,
+            "tdoa_residual_rmse_m": float(rmse),
+            "clock_sync_verified": quality["clock_sync_verified"],
+            "geometry_condition": quality["geometry_condition"],
         }
