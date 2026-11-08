@@ -76,6 +76,22 @@ class ResilientSwarmIntegrationTests(unittest.TestCase):
         self.assertAlmostEqual(
             self.sim.nodes[1].measured_peer_rtt_ms[2], latency_ms)
 
+    def test_continuous_watchdog_holds_unsafe_inflight_simulated_motion(self):
+        drone = self.drones[2]
+        drone.flight_mode = FlightMode.FLYING
+        drone.target_position = drone.current_position
+        self.sim.set_observed_latency_ms(500.)
+        self.sim.safety_sweep()
+        self.assertEqual(drone.flight_mode, FlightMode.HOVER)
+        self.assertIsNone(drone.target_position)
+
+    def test_health_degradation_triggers_local_rth_not_new_remote_goto(self):
+        drone = self.drones[3]
+        drone.battery_level = 8.
+        drone.flight_mode = FlightMode.HOVER
+        self.sim.safety_sweep()
+        self.assertEqual(drone.flight_mode, FlightMode.RETURNING_HOME)
+
     def test_high_observed_latency_blocks_certified_motion(self):
         self.sim.set_observed_latency_ms(500.)
         self.sim._dispatch(self.drones[1], {"kind": "goto", "target_xyz": [12., 0., 10.]})
