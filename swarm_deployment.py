@@ -18,6 +18,10 @@ import signal
 import time
 from typing import Optional
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, PublicFormat, NoEncryption
+
 from swarm_identity_store import IdentityStore, VoteJournal, _atomic_json, _load_json, _safe_root
 from swarm_mesh import HealthReport, MeshNode
 from swarm_runtime import MeshRuntime
@@ -50,14 +54,26 @@ def provision_members(root: str | os.PathLike, count: int, first_port: int,
     digest = _roster_digest(roster)
     group_key = os.urandom(32).hex()
     addresses = {str(i): [host, first_port + i - 1] for i in identities}
+    authority = Ed25519PrivateKey.generate()
+    authority_pub = authority.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
+    authority_priv = authority.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption()).hex()
+    # Authority private key stays in root; copy only each member directory
+    # to its assigned peer. Never publish or distribute this signing key.
+    _atomic_json(root_path / "operator-authority.json", {
+        "version": 1, "private_key_hex": authority_priv, "public_key_hex": authority_pub
+    })
     for i, directory in enumerate(directories, start=1):
-        _atomic_json(directory / "member.json", {
+        record = {
             "version": 1, "node_id": i, "roster": roster,
             "roster_sha256": digest, "group_key_hex": group_key,
             "addresses": addresses, "battery": 100.0 - i,
             "motor_health": 100.0, "link_quality": 95.0,
             "position": [float(i * 20), 0.0, 10.0],
-        })
+            "authority_pub_hex": authority_pub,
+        }
+        content = json.dumps(record, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        record["membership_signature_hex"] = authority.sign(content).hex()
+        _atomic_json(directory / "member.json", record)
     _atomic_json(root_path / "public-roster.json", {
         "version": 1, "roster": roster, "roster_sha256": digest,
         "addresses": addresses,
@@ -70,6 +86,19 @@ def load_member(directory: str | os.PathLike):
     record = _load_json(node_dir / "member.json")
     if record is None or record.get("version") != 1:
         raise ValueError("Missing member configuration")
+    signature_hex = record.pop("membership_signature_hex", None)
+    if not isinstance(signature_hex, str):
+        raise ValueError("Member configuration lacks operator signature")
+    authority_hex = str(record.get("authority_pub_hex", ""))
+    pinned = os.environ.get("SWARM_MESH_AUTHORITY_PUB_HEX", "").strip().lower()
+    if pinned and authority_hex != pinned:
+        raise PermissionError("Operator public key differs from pinned trust anchor")
+    try:
+        content = json.dumps(record, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        Ed25519PublicKey.from_public_bytes(bytes.fromhex(authority_hex)).verify(
+            bytes.fromhex(signature_hex), content)
+    except (InvalidSignature, ValueError, TypeError) as exc:
+        raise ValueError("Invalid operator membership signature") from exc
     identity = IdentityStore(node_dir).load_or_create(int(record["node_id"]))
     roster = {int(i): bytes.fromhex(public) for i, public in record["roster"].items()}
     if (_roster_digest(record["roster"]) != record["roster_sha256"] or
