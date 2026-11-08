@@ -31,7 +31,9 @@ class ElectionExperiments(unittest.TestCase):
 
     def test_under_quorum_partition_cannot_certify(self):
         result = run_election_trial(10, 18, "minority_partition")
-        self.assertTrue(result["converged"])
+        self.assertFalse(result["converged"])
+        self.assertTrue(result["safe_unavailability"])
+        self.assertTrue(result["expected_outcome_met"])
         self.assertEqual(result["certified_honest_nodes"], 0)
         self.assertFalse(result["same_epoch_conflict"])
 
