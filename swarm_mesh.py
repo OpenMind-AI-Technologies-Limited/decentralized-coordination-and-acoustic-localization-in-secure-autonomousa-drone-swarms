@@ -11,6 +11,7 @@ import json
 import math
 import os
 import time
+import threading
 from typing import Callable, Dict, Mapping, Optional
 
 from cryptography.exceptions import InvalidSignature
@@ -91,13 +92,17 @@ class AuthenticatedChannel:
         self.clock = clock
         self.max_age_s = max_age_s
         self._sequence = 0
+        self._send_lock = threading.Lock()
+        self._receive_lock = threading.RLock()
         self._highest: Dict[int, int] = {}
         self._seen: Dict[int, set[int]] = {}
 
     def seal(self, kind: str, epoch: int, body: dict) -> bytes:
-        message = {"version": 1, "sender": self.identity.node_id, "seq": self._sequence,
+        with self._send_lock:
+            sequence = self._sequence
+            self._sequence += 1
+        message = {"version": 1, "sender": self.identity.node_id, "seq": sequence,
                    "time": float(self.clock()), "kind": str(kind), "epoch": int(epoch), "body": body}
-        self._sequence += 1
         signature = self.identity.private_key.sign(_canonical(message))
         signed = {"message": message, "signature": _b64(signature)}
         nonce = os.urandom(12)
@@ -105,6 +110,10 @@ class AuthenticatedChannel:
                            "ciphertext": _b64(self.cipher.encrypt(nonce, _canonical(signed), b"swarm-mesh-v1"))})
 
     def open(self, packet: bytes) -> dict:
+        with self._receive_lock:
+            return self._open_verified(packet)
+
+    def _open_verified(self, packet: bytes) -> dict:
         outer = json.loads(packet)
         if outer.get("version") != 1:
             raise ValueError("Unsupported frame version")
