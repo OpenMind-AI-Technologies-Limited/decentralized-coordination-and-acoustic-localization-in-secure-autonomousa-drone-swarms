@@ -17,3 +17,6 @@ performance_graphs/log/
 # Local test or operator-provisioned node secrets
 .mesh-state/
 mesh-state/
+
+# Reproducible synthetic experiment outputs; never commit generated trial data
+experiment_outputs/
