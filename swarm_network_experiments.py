@@ -185,14 +185,17 @@ def run_election_trial(nodes, seed, scenario, *, loss_rate=0.15):
     for epoch, leader in certificates.values():
         epoch_leaders.setdefault(epoch, set()).add(leader)
     conflict = any(len(leaders) > 1 for leaders in epoch_leaders.values())
-    converged = (not certificates if expected is None else
+    converged = (expected is not None and
                  all(i in certificates and certificates[i][1] == expected
                      for i in live))
+    expected_outcome_met = (not certificates if expected is None else converged)
     return {
         "family": "election", "scenario": scenario, "nodes": nodes,
         "seed": int(seed), "fault_budget": f, "quorum": q,
         "faults_injected": len(malicious),
         "converged": converged,
+        "expected_outcome_met": expected_outcome_met,
+        "safe_unavailability": expected is None and not certificates,
         "same_epoch_conflict": conflict,
         "certified_honest_nodes": len(certificates),
         "honest_nodes_considered": len(live),
