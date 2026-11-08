@@ -220,6 +220,11 @@ class MemberRejoinTests(unittest.TestCase):
             net.broadcast(src, packet)
         self.assertTrue(all(n.leader == 1 for n in nodes))
         clock.now += 7
+        # Partition former leader 1 from the three survivors while they elect.
+        # Without this block, certificate gossip can already rejoin node 1.
+        net.blocked = {(1, member) for member in (2, 3, 4)} | {
+            (member, 1) for member in (2, 3, 4)
+        }
         for follower in nodes[1:]:
             follower.expire_leader()
             self.assertIn(1, follower._suspected_failed_leaders)
@@ -231,8 +236,10 @@ class MemberRejoinTests(unittest.TestCase):
         self.assertTrue(all(n.leader == 2 for n in nodes[1:]))
         # An old heartbeat cannot clear suspicion; the formerly failed drone
         # must adopt the newer authenticated certificate first.
-        net.broadcast(1, nodes[0].publish_health(HealthReport(99, 90, 95)))
+        late_old_packet = nodes[0].publish_health(HealthReport(99, 90, 95))
+        nodes[1].receive(late_old_packet)
         self.assertIn(1, nodes[1]._suspected_failed_leaders)
+        net.blocked.clear()
         net.broadcast(2, nodes[1].publish_health(HealthReport(85, 90, 90)), recipients=[1])
         self.assertEqual(nodes[0].leader, 2)
         net.broadcast(1, nodes[0].publish_health(HealthReport(99, 90, 95)))
