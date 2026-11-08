@@ -119,6 +119,19 @@ class MeshTests(unittest.TestCase):
         self.assertEqual(follower.delivered_commands, [])
         self.assertIsNone(follower.leader)
 
+    def test_fenced_epoch_vote_cannot_delay_leader_recovery(self):
+        self.elect_all()
+        self.clock.now += 7.0
+        follower = self.nodes[1]
+        self.assertEqual(follower.epoch, 1)
+        follower.expire_leader()
+        self.assertEqual(follower._min_authority_epoch, 2)
+        self.assertIsNone(follower.retransmit_vote())
+        follower.publish_health(HealthReport(85, 90, 90))
+        ballot = follower.begin_election(candidate=2)
+        self.assertEqual(follower.epoch, 2)
+        self.assertEqual(follower.channel.open(ballot)["body"]["candidate"], 2)
+
     def test_failed_leader_cannot_reenter_recovery_vote_from_late_telemetry(self):
         self.elect_all()
         self.clock.now += 7.0
