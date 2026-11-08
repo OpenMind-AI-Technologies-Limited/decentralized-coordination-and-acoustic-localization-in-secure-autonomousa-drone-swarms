@@ -53,7 +53,8 @@ jobs:
             test_dynamic_features.py test_ledger_and_acoustic.py \
             test_swarm_coordination.py test_swarm_identity_store.py \
             test_mesh_simulation.py test_swarm_deployment.py \
-            test_swarm_dashboard.py test_swarm_tasks.py tests/gui_smoke_test.py
+            test_swarm_dashboard.py test_swarm_tasks.py test_swarm_scaling.py \
+            tests/gui_smoke_test.py
 
       - name: Run full coordination and existing regression suites
         shell: bash
@@ -67,7 +68,8 @@ jobs:
             test_swarm_tasks.py \
             test_swarm_identity_store.py \
             test_swarm_deployment.py \
-            test_swarm_dashboard.py
+            test_swarm_dashboard.py \
+            test_swarm_scaling.py
 
       - name: Upload Python test artifacts
         if: always()
