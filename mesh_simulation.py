@@ -197,10 +197,11 @@ def demo():
     for drone in drones.values():
         drone.TAKEOFF_ALTITUDE = 2.0
         drone.wind_enabled = False
-        drone.arm()
-        drone.start()
-        drone.takeoff()
     with DroneMeshSimulation(drones) as sim:
+        # Physics threads start inside the adapter; flight commands remain local.
+        for drone in drones.values():
+            if not drone.arm() or not drone.takeoff():
+                raise RuntimeError("Local simulator takeoff was rejected")
         if not sim.wait_for_leader(9):
             raise RuntimeError("No quorum-certified leader in simulation")
         deadline = time.monotonic() + 5.0
