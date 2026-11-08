@@ -205,6 +205,40 @@ class ElectionConvergenceTests(unittest.TestCase):
         self.assertTrue(all(n.certificate.epoch == 2 for n in nodes[1:]))
 
 
+class MemberRejoinTests(unittest.TestCase):
+    def test_expired_leader_rejoins_only_after_receiving_new_certified_view(self):
+        clock = FakeClock()
+        identities = [SwarmIdentity(i) for i in range(1, 5)]
+        roster = {i.node_id: i.public_bytes() for i in identities}
+        key = os.urandom(32)
+        nodes = [MeshNode(i, roster, key, clock=clock) for i in identities]
+        net = InMemoryMesh(nodes)
+        for i, node in enumerate(nodes):
+            net.broadcast(node.node_id, node.publish_health(HealthReport(98 - i * 10, 90, 95)))
+        packets = [(n.node_id, n.begin_election(candidate=1)) for n in nodes]
+        for src, packet in packets:
+            net.broadcast(src, packet)
+        self.assertTrue(all(n.leader == 1 for n in nodes))
+        clock.now += 7
+        for follower in nodes[1:]:
+            follower.expire_leader()
+            self.assertIn(1, follower._suspected_failed_leaders)
+        for follower in nodes[1:]:
+            net.broadcast(follower.node_id, follower.publish_health(HealthReport(85, 90, 90)))
+        packets = [(n.node_id, n.begin_election(candidate=2)) for n in nodes[1:]]
+        for src, packet in packets:
+            net.broadcast(src, packet, recipients=[2, 3, 4])
+        self.assertTrue(all(n.leader == 2 for n in nodes[1:]))
+        # An old heartbeat cannot clear suspicion; the formerly failed drone
+        # must adopt the newer authenticated certificate first.
+        net.broadcast(1, nodes[0].publish_health(HealthReport(99, 90, 95)))
+        self.assertIn(1, nodes[1]._suspected_failed_leaders)
+        net.broadcast(2, nodes[1].publish_health(HealthReport(85, 90, 90)), recipients=[1])
+        self.assertEqual(nodes[0].leader, 2)
+        net.broadcast(1, nodes[0].publish_health(HealthReport(99, 90, 95)))
+        self.assertNotIn(1, nodes[1]._suspected_failed_leaders)
+        self.assertEqual(nodes[1].leader, 2)
+
 class AuthorityLeaseTests(unittest.TestCase):
     def make_nodes(self):
         clock = FakeClock()
