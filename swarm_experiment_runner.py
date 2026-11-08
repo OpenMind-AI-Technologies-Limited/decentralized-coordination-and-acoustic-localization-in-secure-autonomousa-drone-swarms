@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 from datetime import datetime, timezone
 import json
 import os
@@ -153,8 +154,11 @@ def write_evidence(rows, summary, out, *, sizes, trials, seed, families,
                    network_scenarios, loss_rate, bootstrap_samples):
     path = Path(out)
     path.mkdir(parents=True, exist_ok=True)
+    raw_payload = json.dumps(rows, indent=2, sort_keys=True,
+                             allow_nan=False) + "\n"
     manifest = {
-        "schema_version": 1, "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "schema_version": 1,
+        "trials_json_sha256": hashlib.sha256(raw_payload.encode("utf-8")).hexdigest(), "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "source_revision": _source_revision(),
         "scope": "software_simulation_only",
         "real_uav_hardware": False, "radio_latency_measured": False,
@@ -180,8 +184,7 @@ def write_evidence(rows, summary, out, *, sizes, trials, seed, families,
         writer = csv.DictWriter(handle, fieldnames=keys, extrasaction="raise")
         writer.writeheader()
         writer.writerows(rows)
-    files["json"].write_text(json.dumps(rows, indent=2, sort_keys=True,
-                                        allow_nan=False) + "\n", encoding="utf-8")
+    files["json"].write_text(raw_payload, encoding="utf-8")
     files["summary"].write_text(json.dumps(summary, indent=2, sort_keys=True,
                                            allow_nan=False) + "\n", encoding="utf-8")
     files["manifest"].write_text(json.dumps(manifest, indent=2, sort_keys=True)
