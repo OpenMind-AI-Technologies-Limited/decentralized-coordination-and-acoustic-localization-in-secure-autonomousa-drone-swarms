@@ -76,6 +76,32 @@ python mesh_simulation.py  # headless, simulation only
 
 The independent UDP and Drone-physics integration tests bind loopback addresses and never arm or move a real drone. Signed formation actions are delivered to a caller-provided callback, which must enforce geofence, altitude, physical separation, and autopilot constraints.
 
+## Software integration acceptance matrix
+
+| Scope | Implementation | Automated evidence | Boundary |
+|---|---|---|---|
+| Authenticated peer communication | Signed Ed25519 identities, AES-256-GCM UDP envelopes, per-boot replay windows | `test_swarm_coordination.py` | Clock-window-based freshness; receiver replay memory not durable |
+| Independent registered members | Operator-signed immutable roster, private node credential bundles, loopback UDP member CLI | `test_swarm_deployment.py` starts four separate OS processes | Local loopback lab, not field network |
+| Election and recovery | MCSS scoring, signed quorum ballots, epoch fence, crash recovery, certified member rejoin | `test_swarm_coordination.py`, `test_swarm_scaling.py` | Not a formally verified Byzantine consensus / view-change |
+| Persistence | Optional local signing identity, vote journal fsync before signing | `test_swarm_identity_store.py` | Single-writer filesystem; no Windows ACL manager/HSM |
+| Coordinated flight simulation | Explicit safe simulator arming; signed V/line/grid/circle formation and health-aware task assignment | `test_mesh_simulation.py`, `test_swarm_tasks.py` | No safety-certified flight controller integration |
+| GUI | `python main.py --mesh-gui`, separate PyQt5 dashboard for simulator | `test_swarm_dashboard.py` offscreen smoke checks | Legacy default GUI is left intact |
+
+Use `python main.py --mesh-gui` for simulated control, and
+`python swarm_deployment.py provision --out .mesh-state --members 4 --port 33900`
+to create four loopback-only per-process member configurations. See the README
+for one-process-per-node CLI commands, bootstrap trust assumptions and
+persistence warnings.
+
+## What counts as verified
+
+The new CI Python job now explicitly invokes **all eight relevant suites**:
+legacy dynamic features, acoustic/ledger, secure coordination, Drone physics,
+task allocation, persisted identities, independent process recovery and PyQt
+dashboard, plus synthetic election scaling. CI success demonstrates software
+regression health, not a claim about real drone hardware or attack-resilient
+liveness under all network schedules.
+
 ## Publication blockers
 
 1. Reconcile MCSS equation and implementation. Baseline uses 40/30/30; experimental node uses 45/35/20. Do not silently claim the new node replaces the old manager.
