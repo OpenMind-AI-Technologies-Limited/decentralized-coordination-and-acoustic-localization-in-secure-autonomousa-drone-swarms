@@ -68,17 +68,31 @@ def summarize_trials(rows: Sequence[Mapping[str, object]],
         aggregated = {"family": family, "scenario": scenario,
                       "nodes": nodes, "trials": len(items), "metrics": {}}
         for metric in names:
-            if any(isinstance(row[metric], bool) for row in items):
-                count = sum(bool(row[metric]) for row in items)
-                aggregated["metrics"][metric] = wilson_interval(count, len(items))
+            observed = [row[metric] for row in items
+                        if row[metric] is not None and row[metric] != ""]
+            if not observed:
+                aggregated["metrics"][metric] = {
+                    "observed": 0, "missing": len(items), "mean": None,
+                    "lower": None, "upper": None, "method": "no_observations",
+                }
                 continue
+            if all(isinstance(value, bool) for value in observed):
+                count = sum(observed)
+                aggregated["metrics"][metric] = {
+                    "observed": len(observed), "missing": len(items)-len(observed),
+                    **wilson_interval(count, len(observed)),
+                }
+                continue
+            if any(isinstance(value, bool) for value in observed):
+                continue  # Do not silently mix booleans and numeric values.
             try:
-                numbers = [float(row[metric]) for row in items]
+                numbers = [float(value) for value in observed]
             except (TypeError, ValueError):
                 continue
             if not all(math.isfinite(x) for x in numbers):
                 raise ValueError(f"Non-finite metric {metric}")
             aggregated["metrics"][metric] = {
+                "observed": len(numbers), "missing": len(items)-len(numbers),
                 "median": median(numbers),
                 **bootstrap_interval(numbers, confidence=confidence,
                                      resamples=resamples,
