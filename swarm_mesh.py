@@ -246,7 +246,8 @@ class MeshNode:
     def retransmit_vote(self) -> Optional[bytes]:
         """Resend the same signed vote without violating one-vote-per-epoch safety."""
         candidate = self.voted_epochs.get(self.epoch)
-        if candidate is None or self.leader is not None:
+        if (candidate is None or self.leader is not None
+                or self.epoch < self._min_authority_epoch):
             return None
         signature = _b64(self.identity.private_key.sign(_vote_payload(self.epoch, candidate)))
         return self.channel.seal("vote", self.epoch, {"candidate": candidate, "proof": signature})
