@@ -259,6 +259,12 @@ class DroneMeshSimulation:
             candidate_runtime = self._runtimes.get(node.leader)
             if candidate_runtime is None or candidate_runtime._stop.is_set():
                 continue
+            # A majority of followers reporting a leader is insufficient if
+            # that leader itself lacks a valid certificate or fresh quorum.
+            candidate = candidate_runtime.node
+            if (candidate.leader != node.leader or candidate.certificate is None
+                    or not candidate.has_fresh_quorum()):
+                continue
             if not node.has_fresh_quorum():
                 continue
             votes[node.leader] = votes.get(node.leader, 0) + 1
