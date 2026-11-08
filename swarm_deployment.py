@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 import signal
 import time
-from typing import Optional
+from typing import Optional, Sequence
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
@@ -35,10 +35,17 @@ def _roster_digest(roster: dict) -> str:
 
 
 def provision_members(root: str | os.PathLike, count: int, first_port: int,
-                      host: str = "127.0.0.1") -> list[Path]:
+                      host: str = "127.0.0.1",
+                      ports: Optional[Sequence[int]] = None) -> list[Path]:
     """Create immutable local credential bundles for a fixed registered fleet."""
-    if not 4 <= count <= 50 or not 1024 <= first_port <= 65536 - count:
-        raise ValueError("Requires 4–50 members and distinct unprivileged UDP ports")
+    if not 4 <= count <= 50:
+        raise ValueError("Requires 4–50 registered members")
+    port_list = ([first_port + i for i in range(count)]
+                 if ports is None else [int(port) for port in ports])
+    if len(port_list) != count or len(set(port_list)) != count or any(
+        port < 1024 or port > 65535 for port in port_list
+    ):
+        raise ValueError("Requires distinct unprivileged UDP ports")
     # Local loopback is deliberate: opening remote sockets requires an
     # operator to provision a trusted network and firewall first.
     if host != "127.0.0.1":
@@ -53,7 +60,7 @@ def provision_members(root: str | os.PathLike, count: int, first_port: int,
     roster = {str(i): identities[i].public_bytes().hex() for i in identities}
     digest = _roster_digest(roster)
     group_key = os.urandom(32).hex()
-    addresses = {str(i): [host, first_port + i - 1] for i in identities}
+    addresses = {str(i): [host, port_list[i - 1]] for i in identities}
     authority = Ed25519PrivateKey.generate()
     authority_pub = authority.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
     authority_priv = authority.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption()).hex()
