@@ -49,11 +49,12 @@ Virtual delivery delay is uniformly sampled from 1–12 simulated milliseconds. 
     python -m pip install numpy scipy cryptography pytest
     python -m pytest -q test_swarm_experiments.py
 
-    python swarm_experiment_runner.py --sizes 5 10 20 50 --trials 20 --seed 2026 --bootstrap-samples 2000 --out experiment_outputs/swarm
+    python -m pip install matplotlib
+    python swarm_experiment_runner.py --sizes 5 10 20 50 --trials 20 --seed 2026 --bootstrap-samples 2000 --figures --out experiment_outputs/swarm
 
     python swarm_experiment_runner.py --sizes 5 10 --trials 3 --seed 2026 --out experiment_outputs/smoke
 
-Generated files: trials.csv, trials.json, summary.json, manifest.json and REPORT.md. Every row must originate from a real execution of the designated harness. GitHub Actions uploads observed outputs, not prefilled tables. Never claim numerical results without checking those actual artifacts.
+Generated files: trials.csv, trials.json, summary.json, manifest.json, REPORT.md and (when requested) PNG/SVG figures. The manifest includes the SHA-256 digest of trials.json. Every row must originate from a real execution of the designated harness. GitHub Actions uploads observed outputs, not prefilled tables. Never claim numerical results without checking those actual artifacts.
 
 ## Statistical method
 
