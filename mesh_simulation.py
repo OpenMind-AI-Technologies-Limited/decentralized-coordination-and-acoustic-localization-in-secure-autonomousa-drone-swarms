@@ -106,7 +106,8 @@ class DroneMeshSimulation:
             if not drone.goto(Position(*xyz)):
                 raise ValueError("Drone rejected target under its own flight constraints")
             event.update({"accepted": True, "target_xyz": list(xyz),
-                          "epoch": action.get("coordination_epoch")})
+                          "epoch": action.get("coordination_epoch"),
+                          "task_id": action.get("task_id")})
         except (ValueError, TypeError, KeyError, PermissionError) as exc:
             event["reason"] = str(exc)
         finally:
