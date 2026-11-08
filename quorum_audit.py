@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import binascii
 from pathlib import Path
 from typing import Mapping, Optional
 
@@ -91,7 +92,7 @@ class QuorumAuditLedger:
                     _vote_payload(epoch, author),
                 )
             return True
-        except (KeyError, ValueError, TypeError, InvalidSignature):
+        except (KeyError, ValueError, TypeError, InvalidSignature, binascii.Error):
             return False
 
     def propose(self, event: dict, election_certificate: dict) -> dict:
@@ -165,10 +166,12 @@ class QuorumAuditLedger:
             if not self._validate_proposal(proposal):
                 return False
             height = int(proposal["height"])
-            if height <= self.height:
+            duplicate = height <= self.height
+            if duplicate:
                 previous = self.commits[height - 1]
-                return previous["proposal"]["hash"] == proposal["hash"]
-            if height != self.height + 1 or proposal["parent"] != self.tip:
+                if previous["proposal"]["hash"] != proposal["hash"]:
+                    return False
+            elif height != self.height + 1 or proposal["parent"] != self.tip:
                 return False
             if self.locked_height.get(height, proposal["hash"]) != proposal["hash"]:
                 return False
@@ -189,6 +192,8 @@ class QuorumAuditLedger:
                 )
             if len(unique) < self.quorum:
                 return False
+            if duplicate:
+                return True
             original_locks = dict(self.locked_height)
             self.locked_height[height] = proposal["hash"]
             self.commits.append({"proposal": dict(proposal), "votes": list(votes)})
