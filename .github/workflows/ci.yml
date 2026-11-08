@@ -62,7 +62,7 @@ jobs:
             test_swarm_resilience.py test_swarm_model_validation.py \
             experiment_statistics.py swarm_network_experiments.py \
             swarm_geometry_experiments.py swarm_acoustic_experiments.py \
-            swarm_experiment_runner.py test_swarm_experiments.py \
+            swarm_experiment_runner.py experiment_figures.py test_swarm_experiments.py \
             tests/gui_smoke_test.py
 
       - name: Run full coordination and existing regression suites
@@ -156,7 +156,7 @@ jobs:
       - name: Install experiment dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install numpy scipy cryptography
+          pip install numpy scipy cryptography matplotlib
 
       - name: Generate observed synthetic experiment evidence
         run: |
@@ -165,6 +165,7 @@ jobs:
             --trials 6 \
             --seed 2026 \
             --bootstrap-samples 500 \
+            --figures \
             --out experiment_outputs/swarm
 
       - name: Check evidence schema and sampled sizes
