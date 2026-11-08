@@ -108,20 +108,19 @@ def plot_evidence(summary: list[dict], directory) -> list[str]:
             rows = [row for row in acoustic if row["family"] == family]
             if not rows:
                 continue
-            xs, ys, errors = [], [], []
+            xs, ys, intervals = [], [], []
             for row in rows:
                 metric = row["metrics"]["position_error_m"]
                 # Axis is a category, because source intensity and beacon
                 # jitter have incompatible units and cannot share an x-scale.
                 xs.append(family.split("_")[0] + ": " + row["scenario"])
                 ys.append(metric["mean"])
-                errors.append(0 if metric["lower"] is None else
-                              metric["upper"]-metric["lower"])
+                intervals.append((metric["lower"], metric["upper"]))
             ax.scatter(xs, ys, label=family.replace("_", " "))
-            # Vertical CI indication only when repeated successful estimates.
-            for name, value, error in zip(xs, ys, errors):
-                if error > 0:
-                    ax.plot([name, name], [value-error/2, value+error/2], linewidth=1)
+            # Preserve asymmetric bootstrap interval endpoints exactly.
+            for name, (lower, upper) in zip(xs, intervals):
+                if lower is not None and upper is not None and upper > lower:
+                    ax.plot([name, name], [lower, upper], linewidth=1)
         ax.set_ylabel("Conditional mean position error (meters)")
         ax.set_title("Synthetic acoustic localization; only successful estimates")
         ax.tick_params(axis="x", rotation=25, labelsize=8)
