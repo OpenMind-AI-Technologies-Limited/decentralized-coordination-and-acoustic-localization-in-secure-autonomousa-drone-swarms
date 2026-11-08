@@ -175,7 +175,11 @@ class MeshNode:
     def publish_health(self, health: HealthReport, position: Optional[tuple[float, float, float]] = None) -> bytes:
         clean = HealthReport.from_dict(health.to_dict())
         self.health[self.node_id] = (clean, self.clock())
+        if self.leader == self.node_id and self.certificate is not None:
+            self.last_leader_heartbeat = self.clock()
         payload = {"health": clean.to_dict()}
+        if self.certificate is not None:
+            payload["certificate"] = self.certificate.to_dict()
         if position is not None:
             pos = tuple(float(x) for x in position)
             if len(pos) != 3 or not all(math.isfinite(x) for x in pos):
@@ -202,6 +206,14 @@ class MeshNode:
         signature = _b64(self.identity.private_key.sign(_vote_payload(self.epoch, selected)))
         self._accept_vote(self.epoch, self.node_id, selected, signature)
         return self.channel.seal("vote", self.epoch, {"candidate": selected, "proof": signature})
+
+    def retransmit_vote(self) -> Optional[bytes]:
+        """Resend the same signed vote without violating one-vote-per-epoch safety."""
+        candidate = self.voted_epochs.get(self.epoch)
+        if candidate is None or self.leader is not None:
+            return None
+        signature = _b64(self.identity.private_key.sign(_vote_payload(self.epoch, candidate)))
+        return self.channel.seal("vote", self.epoch, {"candidate": candidate, "proof": signature})
 
     def _accept_vote(self, epoch: int, voter: int, candidate: int, proof: str) -> Optional[bytes]:
         if voter not in self.roster or candidate not in self.roster or epoch < self.epoch:
@@ -243,11 +255,15 @@ class MeshNode:
         return True
 
     def _install_certificate(self, cert: ElectionCertificate) -> bool:
-        if not self._verify_certificate(cert) or cert.epoch < max(self.epoch, self._min_authority_epoch):
+        if not self._verify_certificate(cert) or cert.epoch < self._min_authority_epoch:
             return False
-        if self.certificate and self.certificate.epoch == cert.epoch and self.certificate.candidate != cert.candidate:
-            raise ValueError("Conflicting quorum certificates: protocol invariant violated")
-        self.epoch = cert.epoch
+        if self.certificate is not None and cert.epoch < self.certificate.epoch:
+            return False
+        if self.certificate and self.certificate.epoch == cert.epoch:
+            if self.certificate.candidate != cert.candidate:
+                raise ValueError("Conflicting quorum certificates: protocol invariant violated")
+            return True  # Replayed certificate is not a fresh leader heartbeat.
+        self.epoch = max(self.epoch, cert.epoch)
         self.certificate = cert
         self.leader = cert.candidate
         self.last_leader_heartbeat = self.clock()
@@ -260,24 +276,37 @@ class MeshNode:
         kind, body = msg["kind"], msg["body"]
         if kind == "heartbeat":
             report = HealthReport.from_dict(body["health"])
+            if isinstance(body.get("certificate"), dict):
+                cert_data = body["certificate"]
+                cert = ElectionCertificate(int(cert_data["epoch"]), int(cert_data["candidate"]),
+                                           {int(k): str(v) for k, v in cert_data["proofs"].items()})
+                self._install_certificate(cert)
             self.health[sender] = (report, self.clock())
             if "position" in body:
                 pos = tuple(float(x) for x in body["position"])
                 if len(pos) != 3 or not all(math.isfinite(x) for x in pos):
                     raise ValueError("Invalid position telemetry")
                 self.positions[sender] = pos
-            if sender == self.leader and epoch == self.epoch:
+            if sender == self.leader and self.certificate is not None and epoch == self.certificate.epoch:
                 self.last_leader_heartbeat = self.clock()
             return []
         if kind == "vote":
             if epoch > self.epoch + 1 or epoch < self.epoch:
+                return []
+            candidate, proof = int(body["candidate"]), str(body["proof"])
+            try:
+                Ed25519PublicKey.from_public_bytes(self.roster[sender]).verify(
+                    _unb64(proof), _vote_payload(epoch, candidate))
+            except (InvalidSignature, ValueError):
+                return []
+            if self.certificate is not None and not self.leader_timed_out() and epoch > self.epoch:
                 return []
             if epoch > self.epoch:
                 self.epoch = epoch
                 self.leader = None
                 self.certificate = None
             responses = []
-            result = self._accept_vote(epoch, sender, int(body["candidate"]), str(body["proof"]))
+            result = self._accept_vote(epoch, sender, candidate, proof)
             if result is not None:
                 responses.append(result)
             if epoch not in self.voted_epochs:
