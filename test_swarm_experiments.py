@@ -185,6 +185,11 @@ class EvidenceExport(unittest.TestCase):
             self.assertEqual(manifest["raw_rows"], 24)
             with open(files["report"], encoding="utf-8") as handle:
                 self.assertIn("NO physical UAV", handle.read())
+            from experiment_figures import plot_evidence
+            figure_paths = plot_evidence(summary, temp + "/figures")
+            self.assertGreaterEqual(len(figure_paths), 4)
+            with open(figure_paths[0], "rb") as handle:
+                self.assertEqual(handle.read(8), b"\x89PNG\r\n\x1a\n")
 
 
 if __name__ == "__main__":
