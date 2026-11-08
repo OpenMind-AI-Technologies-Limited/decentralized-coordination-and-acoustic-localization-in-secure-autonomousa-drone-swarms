@@ -1,8 +1,9 @@
 # Acoustic Source Localization, Quorum Audit and Simulation Safety
 
 **Scope:** optional signed-mesh simulator and legacy acoustic/ledger modules.
-**Research integrity:** these are software-validation results. No real microphone,
-GPS-denied self-localization, physical flight or full Byzantine consensus is claimed.
+**Research integrity:** these are software-validation results. No verified
+real-microphone positioning, field-proven GPS-denied navigation, physical
+flight or full Byzantine consensus is claimed.
 
 ## Acoustic source estimation
 
@@ -23,9 +24,36 @@ GPS-denied self-localization, physical flight or full Byzantine consensus is cla
   a configured acoustic event. The new `DroneMeshSimulation.localize_acoustic()`
   intentionally *never* commands flight automatically: acceptable source
   observations are recorded as quorum-certified evidence only.
-- Localization of drones themselves in a GPS-denied environment would need
-  additional reference-frame observability, synchronized clocks, hardware
-  calibration, multipath modeling and independently benchmarked sensor fusion.
+- This legacy sound-source path is not drone self-localization. A separate
+  **known-beacon receiver** estimator now demonstrates conditional GPS-free XY
+  observability in simulation; hardware synchronization and localization
+  claims remain unproven.
+
+## GPS-independent known-beacon receiver XY (simulation)
+
+`beacon_localization.py` estimates a **receiver/drone XY position** from TDOA
+differences to **four or more known, spatially nondegenerate acoustic beacons**.
+The experiment must supply authenticated beacon XY coordinates, known
+transmission times, recorded arrival times, and a bounded relative transmit
+schedule uncertainty (maximum 1 ms in this prototype). A common receiver
+clock bias cancels after subtracting relative travel times.
+
+It rejects impossible propagation times, non-finite readings, missing anchors,
+collinear geometry and unstable estimation. The returned estimate is explicitly
+marked `estimate_type=beacon_receiver_xy`, `gps_input_used=False` and
+`hardware_verified=False`. This is a different sensing configuration from
+unknown-source localization by drone-mounted microphones.
+
+`DroneMeshSimulation.localize_receiver_from_beacons()` returns the observation
+and, if quorum is available, records it in the signed audit log. It
+**does not** modify the simulated drone's physical position or send navigation
+commands. Reproduce the known-anchor geometry/schedule tests with
+`python -m pytest -q test_beacon_localization.py` or use the dedicated
+**Simulate known-beacon GPS-free XY** button in the opt-in PyQt dashboard.
+
+Unknown anchor positions, uncertain beacon identities, real synchronization
+offsets, 3D drone motion, rotor noise, multipath and GNSS-denied real flight
+remain separate unsolved validation tasks.
 
 ### Reproduce synthetic ground-truth errors
 
@@ -116,7 +144,7 @@ bridge values are **not** silently fed to the safety threshold.
 
 ```bash
 python -m pytest -q \
-  test_acoustic_quality.py test_acoustic_benchmark.py \
+  test_acoustic_quality.py test_acoustic_benchmark.py test_beacon_localization.py \
   test_quorum_audit.py test_ledger_integrity.py \
   test_swarm_safety.py test_swarm_model_validation.py \
   test_swarm_resilience.py test_ledger_and_acoustic.py test_mesh_simulation.py
