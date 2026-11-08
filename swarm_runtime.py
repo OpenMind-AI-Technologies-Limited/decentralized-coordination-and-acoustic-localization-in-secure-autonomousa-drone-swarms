@@ -123,7 +123,9 @@ class MeshRuntime:
                             if self.node.clock() - seen_at <= self.node.timeout_s)
                 if fresh >= self.node.quorum:
                     try:
-                        if self.node.epoch in self.node.voted_epochs and self._election_retries < 9:
+                        if (self.node.epoch >= self.node._min_authority_epoch
+                                and self.node.epoch in self.node.voted_epochs
+                                and self._election_retries < 9):
                             packet = self.node.retransmit_vote()
                             self._election_retries += 1
                         else:
