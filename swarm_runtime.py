@@ -52,12 +52,33 @@ class MeshRuntime:
                 self.logger.warning("Rejected invalid formation command: %s", exc)
                 return
             action = {"kind": "goto", "target_xyz": list(target), "coordination_epoch": record["epoch"]}
+        elif action.get("kind") == "task_assignment":
+            assignments = action.get("assignments")
+            if not isinstance(assignments, dict):
+                self.logger.warning("Rejected malformed task allocation")
+                return
+            assigned = assignments.get(str(self.node.node_id))
+            if assigned is None:
+                return
+            if not isinstance(assigned, dict):
+                self.logger.warning("Rejected malformed local task")
+                return
+            action = {
+                "kind": "goto",
+                "target_xyz": assigned.get("target_xyz"),
+                "task_id": assigned.get("task_id"),
+                "coordination_epoch": record["epoch"],
+            }
         if self.command_handler is not None:
             self.command_handler(action)
 
     def broadcast_action(self, action: dict):
         """Only a quorum-certified leader may publish a flight directive."""
-        self.transport.send(self.node.issue_command(action))
+        packet = self.node.issue_command(action)
+        # The leader also follows its own certified command; no unsigned
+        # direct-call bypass is permitted for the local simulated drone.
+        self.node.receive(packet)
+        self.transport.send(packet)
 
     def start(self):
         if self._thread is not None:
