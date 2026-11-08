@@ -131,14 +131,15 @@ class VoteJournal:
         if epoch < 1 or candidate < 1:
             raise ValueError("Invalid election vote")
         with self._lock:
+            # Prevent even an identical old-view vote from being
+            # reissued once this identity has advanced to a later epoch.
+            if self.votes and epoch < max(self.votes):
+                raise PermissionError("Cannot sign a vote for a retired election epoch")
             old = self.votes.get(epoch)
             if old is not None:
                 if old != candidate:
                     raise PermissionError("Cannot vote twice for different leaders in one epoch")
                 return
-            # Prevent an older view from being signed after a later one.
-            if self.votes and epoch < max(self.votes):
-                raise PermissionError("Cannot sign a vote for a retired election epoch")
             updated = {**self.votes, epoch: candidate}
             _atomic_json(self.path, {
                 "version": 1,
