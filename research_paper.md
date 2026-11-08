@@ -168,10 +168,10 @@ The public repository includes fixed-roster coordination, authenticated transpor
 4. Jarraya I, Al-Batati A, Kadri MB, et al. GNSS-denied unmanned aerial vehicle navigation: analyzing computational complexity, sensor fusion, and localization methodologies. Satellite Navigation. 2025;6:9. https://doi.org/10.1186/s43020-025-00162-z
 5. Khargharia HS, Ouali A, Shakya S, Ahmad S. Collision avoidance in UAV swarms: a learning-centric perspective on collaborative intelligence. Neurocomputing. 2026. https://doi.org/10.1016/j.neucom.2025.132020
 6. Sophia S, Leelipushpam PGJ, Jebadurai IJ, et al. Zero-trust graph-attentive intelligence for Byzantine-resilient UAV swarms under communication constraints. Discover Electronics. 2026;3:154. https://doi.org/10.1007/s44291-026-00305-9
-7. Intelligent UAV swarm key agreement survey: systematic taxonomy, cryptographic automaton and quantum resistance. Internet of Things. 2025;34:101720. https://doi.org/10.1016/j.iot.2025.101720
+7. Kou G, Ye Q, Zhang M, Wang X, Fu W, et al. Intelligent UAV swarm key agreement survey: systematic taxonomy, cryptographic automaton and quantum resistance. Internet of Things. 2025;34:101720. https://doi.org/10.1016/j.iot.2025.101720
 8. Chen L, Zhu Y, Liu S, Yu H, Zhang B. PUF-based dynamic secret-key strategy with hierarchical blockchain for UAV swarm authentication. Computer Communications. 2024;218:31–43. https://doi.org/10.1016/j.comcom.2024.02.001
-9. Blockchain-based lightweight key management scheme for secure UAV swarm task allocation. IEEE Transactions on Network and Service Management. 2025. https://doi.org/10.1109/TNSM.2025.3636562
-10. Network analysis of decentralized fault-tolerant UAV swarm coordination in critical missions. Drone Systems and Applications. 2024;12:1–15. https://doi.org/10.1139/dsa-2023-0101
+9. Zhu Y, Chen L, Liu S, Yang B, et al. Blockchain-based lightweight key management scheme for secure UAV swarm task allocation. IEEE Transactions on Network and Service Management. Published online 2025. https://doi.org/10.1109/TNSM.2025.3636562
+10. Chandran I, Vipin K. Network analysis of decentralized fault-tolerant UAV swarm coordination in critical missions. Drone Systems and Applications. 2024;12:1–15. https://doi.org/10.1139/dsa-2023-0101
 11. Xu B, Dai Y, Suleman A, Shi Y. Distributed fault-tolerant control of multi-UAV formation for dynamic leader tracking: a Lyapunov-based MPC framework. Automatica. 2025;175:112179. https://doi.org/10.1016/j.automatica.2025.112179
 12. Hu Y, Miao Z, Wang Y, Zhang H, Wang X, He W. Safe and reliable distributed fault-tolerant formation control for quadrotor swarms. IEEE Transactions on Aerospace and Electronic Systems. 2025;61(4):9220–9234. https://doi.org/10.1109/TAES.2025.3553120
 13. Miao Q, Zhang K, Jiang B. Fixed-time collision-free fault-tolerant formation control of multi-UAVs under actuator faults. IEEE Transactions on Cybernetics. 2024;54(6):3679–3691. https://doi.org/10.1109/TCYB.2024.3352251
@@ -187,8 +187,8 @@ The public repository includes fixed-roster coordination, authenticated transpor
 23. Castro M, Liskov B. Practical Byzantine fault tolerance. 3rd USENIX Symposium on Operating Systems Design and Implementation. 1999. https://www.usenix.org/conference/osdi-99/practical-byzantine-fault-tolerance
 24. Shkhagor MS, Zarevich AI, Zarevich MA. Acoustic localization for decentralized swarms of unmanned aerial vehicles in the absence of GPS. MIST 2026:1425–1432. [Related conference publication; overlap disclosed]. https://doi.org/10.58168/MIST2026_1425-1432
 25. Wang J, Yang C, Zhang C, et al. Byzantine-resilient UAV swarm federated reinforcement learning for low-altitude economy. IEEE Transactions on Vehicular Technology. 2026;75(7):12148–12165. https://doi.org/10.1109/TVT.2026.3652125
-26. Detection-guided resilient consensus control for UAV swarms under random denial-of-service attacks. Eng. 2026;7(9):451. https://doi.org/10.3390/eng7090451
-27. Federated learning and lightweight blockchain for resilient UAV communication against PNT and model poisoning attacks. IEEE ICTC. 2025. https://doi.org/10.1109/ICTC66702.2025.11388093
+26. Han Y, Yuan M, Li Z, Shen J, Chen P. Detection-guided resilient consensus control for UAV swarms under random denial-of-service attacks. Eng. 2026;7(9):451. https://doi.org/10.3390/eng7090451
+27. Ajakwe SO, Kim D-S. Federated learning and lightweight blockchain for resilient UAV communication against PNT and model poisoning attacks. Proceedings of IEEE ICTC. 2025. https://doi.org/10.1109/ICTC66702.2025.11388093
 
 ## Supplementary methodological audit
 
