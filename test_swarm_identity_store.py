@@ -90,6 +90,8 @@ class BallotJournalTests(unittest.TestCase):
             # Deliberately loading node-1's vote record with node-2 identity.
             moved = self.root / "votes-2.json"
             moved.write_bytes((self.root / "votes-1.json").read_bytes())
+            if os.name == "posix":
+                moved.chmod(0o600)
             VoteJournal(self.root, different)
 
     def test_restart_preserves_vote_epoch_fence(self):
