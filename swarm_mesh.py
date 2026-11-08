@@ -95,17 +95,23 @@ class AuthenticatedChannel:
         self.clock = clock
         self.max_age_s = max_age_s
         self._sequence = 0
+        self._boot_id = os.urandom(16).hex()
         self._send_lock = threading.Lock()
         self._receive_lock = threading.RLock()
-        self._highest: Dict[int, int] = {}
-        self._seen: Dict[int, set[int]] = {}
+        # Sequence numbers are scoped to a signed process boot identifier.
+        # This permits a restarted peer to use seq=0 without accepting a
+        # duplicate message from the previous boot session.
+        self._highest: Dict[tuple[int, str], int] = {}
+        self._seen: Dict[tuple[int, str], set[int]] = {}
+        self._sessions_seen_at: Dict[tuple[int, str], float] = {}
 
     def seal(self, kind: str, epoch: int, body: dict) -> bytes:
         with self._send_lock:
             sequence = self._sequence
             self._sequence += 1
-        message = {"version": 1, "sender": self.identity.node_id, "seq": sequence,
-                   "time": float(self.clock()), "kind": str(kind), "epoch": int(epoch), "body": body}
+        message = {"version": 1, "sender": self.identity.node_id,
+                   "boot": self._boot_id, "seq": sequence, "time": float(self.clock()),
+                   "kind": str(kind), "epoch": int(epoch), "body": body}
         signature = self.identity.private_key.sign(_canonical(message))
         signed = {"message": message, "signature": _b64(signature)}
         nonce = os.urandom(12)
@@ -134,17 +140,32 @@ class AuthenticatedChannel:
         skew = float(self.clock()) - float(message["time"])
         if not (-5.0 <= skew <= self.max_age_s):
             raise ValueError("Expired or future-dated envelope")
+        boot_id = message.get("boot")
+        if (not isinstance(boot_id, str) or len(boot_id) != 32
+                or any(char not in "0123456789abcdef" for char in boot_id)):
+            raise ValueError("Invalid signed process boot identity")
         seq = int(message["seq"])
         if seq < 0:
             raise ValueError("Invalid sequence")
-        highest = self._highest.get(sender, -1)
-        seen = self._seen.setdefault(sender, set())
+        session = (sender, boot_id)
+        highest = self._highest.get(session, -1)
+        seen = self._seen.setdefault(session, set())
         if seq <= highest - 128 or seq in seen:
             raise ValueError("Replayed envelope")
         seen.add(seq)
-        self._highest[sender] = max(highest, seq)
-        cutoff = self._highest[sender] - 128
-        self._seen[sender] = {s for s in seen if s > cutoff}
+        self._highest[session] = max(highest, seq)
+        cutoff = self._highest[session] - 128
+        self._seen[session] = {number for number in seen if number > cutoff}
+        now = float(self.clock())
+        self._sessions_seen_at[session] = now
+        # Bound state from obsolete sessions. Valid packets have a maximum age
+        # above; no eviction of a live session's replay window is permitted.
+        if len(self._sessions_seen_at) > max(32, 8 * len(self.peers)):
+            for key, last_seen in list(self._sessions_seen_at.items()):
+                if key != session and now - last_seen > 2 * self.max_age_s:
+                    self._sessions_seen_at.pop(key, None)
+                    self._highest.pop(key, None)
+                    self._seen.pop(key, None)
         return message
 
 
