@@ -69,6 +69,13 @@ class ResilientSwarmIntegrationTests(unittest.TestCase):
         self.assertEqual(self.sim.audit_ledgers[2].height, 1)
         self.assertTrue(all(d.flight_mode is FlightMode.HOVER for d in self.drones.values()))
 
+    def test_measured_peer_rtt_is_real_signed_udp_round_trip(self):
+        latency_ms = self.sim.measure_peer_rtt(2, timeout_s=2.0)
+        self.assertGreaterEqual(latency_ms, 0.0)
+        self.assertLess(latency_ms, 2000.0)
+        self.assertAlmostEqual(
+            self.sim.nodes[1].measured_peer_rtt_ms[2], latency_ms)
+
     def test_high_observed_latency_blocks_certified_motion(self):
         self.sim.set_observed_latency_ms(500.)
         self.sim._dispatch(self.drones[1], {"kind": "goto", "target_xyz": [12., 0., 10.]})
