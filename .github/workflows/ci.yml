@@ -64,9 +64,12 @@ jobs:
             swarm_tasks.py \
             swarm_identity_store.py \
             test_swarm_identity_store.py \
+            swarm_deployment.py \
+            test_swarm_deployment.py \
             test_mesh_simulation.py \
-            test_swarm_tasks.py \
             test_swarm_identity_store.py \
+            test_swarm_deployment.py \
+            test_swarm_tasks.py \
             test_swarm_coordination.py \
             test_ledger_and_acoustic.py \
             tests/gui_smoke_test.py
