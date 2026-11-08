@@ -12,7 +12,10 @@ import math
 import os
 import time
 import threading
-from typing import Callable, Dict, Mapping, Optional
+from typing import Callable, Dict, Mapping, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from swarm_identity_store import VoteJournal
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
@@ -154,7 +157,8 @@ class MeshNode:
 
     def __init__(self, identity: SwarmIdentity, roster: Mapping[int, bytes], group_key: bytes,
                  clock: Callable[[], float] = time.time, heartbeat_timeout_s: float = 5.0,
-                 max_faults: Optional[int] = None):
+                 max_faults: Optional[int] = None,
+                 vote_journal: Optional["VoteJournal"] = None):
         self.identity = identity
         self.node_id = identity.node_id
         self.roster = {int(k): bytes(v) for k, v in roster.items()}
@@ -167,13 +171,17 @@ class MeshNode:
         self.clock = clock
         self.timeout_s = heartbeat_timeout_s
         self.channel = AuthenticatedChannel(identity, self.roster, group_key, clock=clock)
-        self.epoch = 0
-        self._min_authority_epoch = 0
+        self.vote_journal = vote_journal
+        if vote_journal is not None and vote_journal.node_id != identity.node_id:
+            raise ValueError("Vote journal identity mismatch")
+        persisted_votes = dict(vote_journal.votes) if vote_journal is not None else {}
+        self.epoch = max(persisted_votes, default=0)
+        self._min_authority_epoch = self.epoch if persisted_votes else 0
         self.certificate: Optional[ElectionCertificate] = None
         self.leader: Optional[int] = None
         self.last_leader_heartbeat: Optional[float] = None
         self.health: Dict[int, tuple[HealthReport, float]] = {}
-        self.voted_epochs: dict[int, int] = {}
+        self.voted_epochs: dict[int, int] = persisted_votes
         self.votes: dict[int, dict[int, tuple[int, str]]] = {}
         self.equivocators: dict[int, set[int]] = {}
         self.issued_certificate_epochs: set[int] = set()
@@ -211,15 +219,24 @@ class MeshNode:
         ordered = sorted(eligible, key=lambda x: (-x[1], x[0]))
         return ordered[0][0] if ordered else None
 
+    def _record_vote(self, epoch: int, candidate: int) -> None:
+        if self.vote_journal is not None:
+            self.vote_journal.cast(epoch, candidate)  # fsync before signing
+        previous = self.voted_epochs.get(epoch)
+        if previous is not None and previous != candidate:
+            raise PermissionError("Refusing same-epoch equivocation")
+        self.voted_epochs[epoch] = candidate
+
     def begin_election(self, candidate: Optional[int] = None) -> bytes:
-        self.epoch = max(self.epoch + 1, self._min_authority_epoch)
+        next_epoch = max(self.epoch + 1, self._min_authority_epoch)
         selected = self.choose_candidate() if candidate is None else int(candidate)
         if selected not in self.roster:
             raise ValueError("No eligible registered candidate")
+        self._record_vote(next_epoch, selected)
+        self.epoch = next_epoch
         self.leader = None
         self.certificate = None
         self.last_leader_heartbeat = None
-        self.voted_epochs[self.epoch] = selected
         signature = _b64(self.identity.private_key.sign(_vote_payload(self.epoch, selected)))
         self._accept_vote(self.epoch, self.node_id, selected, signature)
         return self.channel.seal("vote", self.epoch, {"candidate": selected, "proof": signature})
@@ -274,15 +291,16 @@ class MeshNode:
     def _install_certificate(self, cert: ElectionCertificate) -> bool:
         if not self._verify_certificate(cert) or cert.epoch < self._min_authority_epoch:
             return False
-        if cert.epoch < self.epoch and self.certificate is None:
-            return False
+        # A valid committed certificate may arrive after a node tentatively
+        # advanced an election view without obtaining a certificate. The
+        # durable authority fence still prevents resurrecting an expired view.
         if self.certificate is not None and cert.epoch < self.certificate.epoch:
             return False
         if self.certificate and self.certificate.epoch == cert.epoch:
             if self.certificate.candidate != cert.candidate:
                 raise ValueError("Conflicting quorum certificates: protocol invariant violated")
             return True  # Replayed certificate is not a fresh leader heartbeat.
-        self.epoch = max(self.epoch, cert.epoch)
+        self.epoch = cert.epoch
         self.certificate = cert
         self.leader = cert.candidate
         self.last_leader_heartbeat = self.clock()
@@ -331,7 +349,7 @@ class MeshNode:
             if epoch not in self.voted_epochs:
                 candidate = self.choose_candidate()
                 if candidate is not None:
-                    self.voted_epochs[epoch] = candidate
+                    self._record_vote(epoch, candidate)
                     proof = _b64(self.identity.private_key.sign(_vote_payload(epoch, candidate)))
                     generated = self._accept_vote(epoch, self.node_id, candidate, proof)
                     responses.append(self.channel.seal("vote", epoch, {"candidate": candidate, "proof": proof}))
