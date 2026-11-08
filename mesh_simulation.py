@@ -24,6 +24,7 @@ from swarm_transport import UdpPeerTransport
 from quorum_audit import QuorumAuditLedger
 from acoustic_tracking import AcousticTrackingSystem
 from swarm_safety import SimulatedMotionSafety
+from swarm_model_validation import velocity_advisory
 
 
 class DroneMeshSimulation:
@@ -280,6 +281,17 @@ class DroneMeshSimulation:
                 return winner
             time.sleep(0.05)
         return None
+
+    def get_velocity_advisory(self, node_id: int) -> dict:
+        """Read optional validated model advice without commanding drone motion."""
+        drone = self.drones[int(node_id)]
+        features = [
+            drone.battery_level, drone.signal_strength,
+            drone.processing_capability, drone.current_position.z,
+            drone.velocity.x, drone.velocity.y, drone.velocity.z,
+        ]
+        return velocity_advisory(getattr(drone, "ml_trainer", None), features,
+                                 max_speed_mps=float(drone.MAX_SPEED))
 
     def measure_peer_rtt(self, target_id: int, timeout_s: float = 2.0) -> float:
         """Real UDP roundtrip observation, NOT synthetic C++<->Python bridge RTT."""
