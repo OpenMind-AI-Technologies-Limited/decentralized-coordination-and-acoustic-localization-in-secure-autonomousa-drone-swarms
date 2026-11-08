@@ -104,6 +104,11 @@ def run_election_trial(nodes, seed, scenario, *, loss_rate=0.15):
                          loss=loss_rate if scenario == "packet_loss" else 0.0,
                          blocked=blocked, silent=malicious)
     t0, wall0 = clock.now, time.perf_counter()
+    failure_injected_at = None
+    # Deliberately omniscient baseline: global health ranking without
+    # network, quorum, membership checks, or attack authentication.
+    # This is NOT a deployable consensus comparator.
+    oracle_candidate = 2 if scenario == "leader_failure" else 1
     for i, agent in agents.items():
         packet = agent.publish_health(HealthReport(
             battery=95 - 0.1*i, motor_health=95, link_quality=90))
@@ -147,6 +152,7 @@ def run_election_trial(nodes, seed, scenario, *, loss_rate=0.15):
             net.drain()
 
     if scenario == "leader_failure" and agents[1].leader == 1:
+        failure_injected_at = clock.now
         clock.now += agents[2].timeout_s + 0.2
         # A stopped member cannot send stale certificates or receive gossip.
         net.blocked |= {(1, i) for i in range(2, nodes+1)}
@@ -193,6 +199,9 @@ def run_election_trial(nodes, seed, scenario, *, loss_rate=0.15):
         "family": "election", "scenario": scenario, "nodes": nodes,
         "seed": int(seed), "fault_budget": f, "quorum": q,
         "faults_injected": len(malicious),
+        "oracle_selected_member": oracle_candidate,
+        "oracle_nominal_available": True,
+        "oracle_availability_without_quorum": not converged,
         "converged": converged,
         "expected_outcome_met": expected_outcome_met,
         "safe_unavailability": expected is None and not certificates,
@@ -202,6 +211,13 @@ def run_election_trial(nodes, seed, scenario, *, loss_rate=0.15):
         "detected_equivocations": sum(
             len(a.equivocators.get(1, ())) for a in agents.values()),
         "virtual_time_ms": round((clock.now-t0)*1000, 3),
+        "recovery_virtual_ms": (
+            round((clock.now - failure_injected_at)*1000, 3)
+            if failure_injected_at is not None else None
+        ),
+        "packet_delivery_fraction": (
+            net.delivered / net.sent if net.sent else 0.0
+        ),
         "harness_wall_ms": round((time.perf_counter()-wall0)*1000, 3),
         **net.counters(),
     }
