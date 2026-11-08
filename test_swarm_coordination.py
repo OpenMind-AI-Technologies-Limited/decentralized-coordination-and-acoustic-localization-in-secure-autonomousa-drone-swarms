@@ -131,6 +131,38 @@ class MeshTests(unittest.TestCase):
         self.assertNotIn(4, self.nodes[0].votes[1])
 
 
+class ElectionConvergenceTests(unittest.TestCase):
+    def test_late_certificate_converges_after_tentative_view_advance(self):
+        # Simulate an election certificate arriving only after a lagging node
+        # tentatively moves to the next epoch (common under packet reordering).
+        clock = FakeClock()
+        identities = [SwarmIdentity(i) for i in range(1, 5)]
+        roster = {ident.node_id: ident.public_bytes() for ident in identities}
+        key = os.urandom(32)
+        nodes = [MeshNode(ident, roster, key, clock=clock) for ident in identities]
+        network = InMemoryMesh(nodes)
+        for index, node in enumerate(nodes):
+            network.broadcast(node.node_id, node.publish_health(HealthReport(95 - 10*index, 90, 90)))
+        election = [(n.node_id, n.begin_election(candidate=1)) for n in nodes]
+        for source, packet in election:
+            network.broadcast(source, packet)
+        self.assertEqual([node.leader for node in nodes], [1] * 4)
+
+        clock.now += 7.0
+        for node in nodes:
+            node.expire_leader()
+        for node in nodes[1:]:
+            network.broadcast(node.node_id, node.publish_health(HealthReport(80, 90, 90)))
+        election = [(n.node_id, n.begin_election(candidate=2)) for n in nodes[1:]]
+        # Node 4 becomes impatient before seeing the committed epoch 2.
+        nodes[3].begin_election(candidate=2)
+        self.assertEqual(nodes[3].epoch, 3)
+        for sender, packet in election:
+            network.broadcast(sender, packet)
+        self.assertEqual([node.leader for node in nodes[1:]], [2, 2, 2])
+        self.assertTrue(all(n.certificate.epoch == 2 for n in nodes[1:]))
+
+
 class AuthorityLeaseTests(unittest.TestCase):
     def make_nodes(self):
         clock = FakeClock()
