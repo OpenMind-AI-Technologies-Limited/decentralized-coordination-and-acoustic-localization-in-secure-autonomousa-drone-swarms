@@ -89,7 +89,9 @@ class SeparateProcessTests(unittest.TestCase):
         path = directory / "status.json"
         try:
             return json.loads(path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, json.JSONDecodeError):
+        except (FileNotFoundError, json.JSONDecodeError, PermissionError):
+            # Windows atomic-replace can momentarily deny a concurrent read.
+            # The polling harness treats this as transient, not a node failure.
             return {}
 
     def _wait(self, predicate, timeout=14.0):
