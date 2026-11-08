@@ -200,6 +200,22 @@ class DroneMeshSimulation:
             time.sleep(0.05)
         return None
 
+    def measure_peer_rtt(self, target_id: int, timeout_s: float = 2.0) -> float:
+        """Real UDP roundtrip observation, NOT synthetic C++<->Python bridge RTT."""
+        leader_id = self.leader()
+        if leader_id is None or target_id == leader_id or target_id not in self._runtimes:
+            raise ValueError("Need certified leader and a distinct registered target")
+        node = self._runtimes[leader_id].node
+        node.measured_peer_rtt_ms.pop(target_id, None)
+        probe = node.start_latency_probe(target_id)
+        self._transports[leader_id].send(probe, recipient=target_id)
+        until = time.monotonic() + timeout_s
+        while time.monotonic() < until:
+            if target_id in node.measured_peer_rtt_ms:
+                return node.measured_peer_rtt_ms[target_id]
+            time.sleep(0.01)
+        raise TimeoutError("No authenticated RTT reply from target")
+
     def add_simulated_obstacle(self, xyz: tuple[float, float, float], radius_m: float) -> None:
         self.motion_safety.add_obstacle(xyz, radius_m)
 
