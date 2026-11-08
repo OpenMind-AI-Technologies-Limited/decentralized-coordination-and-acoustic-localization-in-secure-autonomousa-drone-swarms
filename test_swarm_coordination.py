@@ -58,6 +58,20 @@ class MeshTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 follower.receive(packet)
 
+    def test_authenticated_channel_survives_sender_restart_without_replay(self):
+        sender = self.ids[1]
+        receiver = self.nodes[0].channel
+        old = AuthenticatedChannel(sender, self.roster, self.secret, clock=self.clock)
+        first = old.seal("heartbeat", 0, {"health": HealthReport(80, 80, 80).to_dict()})
+        receiver.open(first)
+        second = AuthenticatedChannel(sender, self.roster, self.secret, clock=self.clock)
+        fresh = second.seal("heartbeat", 0, {"health": HealthReport(81, 80, 80).to_dict()})
+        self.assertEqual(receiver.open(fresh)["sender"], 2)
+        with self.assertRaises(ValueError):
+            receiver.open(first)
+        with self.assertRaises(ValueError):
+            receiver.open(fresh)
+
     def test_non_leader_cannot_issue_command(self):
         self.elect_all()
         with self.assertRaises(PermissionError):
