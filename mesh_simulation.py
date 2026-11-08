@@ -23,6 +23,7 @@ from swarm_tasks import allocate_tasks
 from swarm_transport import UdpPeerTransport
 from quorum_audit import QuorumAuditLedger
 from acoustic_tracking import AcousticTrackingSystem
+from beacon_localization import estimate_receiver_xy
 from swarm_safety import SimulatedMotionSafety
 from swarm_model_validation import velocity_advisory
 
@@ -389,6 +390,31 @@ class DroneMeshSimulation:
                     "tdoa_residual_rmse_m": result["tdoa_residual_rmse_m"],
                     "clock_sync_verified": result["clock_sync_verified"],
                 })
+        return result
+
+    def localize_receiver_from_beacons(
+        self, drone_id: int, beacon_positions: dict,
+        scheduled_emissions_s: dict, measured_arrivals_s: dict,
+        relative_schedule_uncertainty_s: float,
+    ) -> dict:
+        """Estimate simulated drone XY from known synchronized acoustic anchors.
+
+        Never mutate Drone.current_position or issue any flight command.
+        """
+        if drone_id not in self.drones or self._runtimes[drone_id]._stop.is_set():
+            raise ValueError("Receiver is not an active registered drone")
+        result = estimate_receiver_xy(
+            beacon_positions, scheduled_emissions_s, measured_arrivals_s,
+            relative_schedule_uncertainty_s,
+        )
+        if result.get("localized") and self.leader() is not None:
+            result["audit"] = self.audit_event({
+                "kind": "beacon_receiver_xy_observation",
+                "receiver_id": drone_id,
+                "estimate": result["receiver_position"],
+                "reference_frame": result["reference_frame"],
+                "tdoa_residual_rmse_m": result["tdoa_residual_rmse_m"],
+            })
         return result
 
     def command_formation(self, pattern: str, leader_position: tuple[float, float, float],
