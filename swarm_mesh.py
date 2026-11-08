@@ -181,6 +181,7 @@ class MeshNode:
         self.leader: Optional[int] = None
         self.last_leader_heartbeat: Optional[float] = None
         self.health: Dict[int, tuple[HealthReport, float]] = {}
+        self._suspected_failed_leaders: set[int] = set()
         self.voted_epochs: dict[int, int] = persisted_votes
         self.votes: dict[int, dict[int, tuple[int, str]]] = {}
         self.equivocators: dict[int, set[int]] = {}
@@ -215,7 +216,8 @@ class MeshNode:
 
     def choose_candidate(self) -> Optional[int]:
         eligible = ((node_id, report.score()) for node_id, (report, seen_at) in self.health.items()
-                    if node_id in self.roster and self.clock() - seen_at <= self.timeout_s)
+                    if node_id in self.roster and node_id not in self._suspected_failed_leaders
+                    and self.clock() - seen_at <= self.timeout_s)
         ordered = sorted(eligible, key=lambda x: (-x[1], x[0]))
         return ordered[0][0] if ordered else None
 
@@ -230,7 +232,7 @@ class MeshNode:
     def begin_election(self, candidate: Optional[int] = None) -> bytes:
         next_epoch = max(self.epoch + 1, self._min_authority_epoch)
         selected = self.choose_candidate() if candidate is None else int(candidate)
-        if selected not in self.roster:
+        if selected not in self.roster or selected in self._suspected_failed_leaders:
             raise ValueError("No eligible registered candidate")
         self._record_vote(next_epoch, selected)
         self.epoch = next_epoch
@@ -328,6 +330,8 @@ class MeshNode:
                 self.last_leader_heartbeat = self.clock()
             return []
         if kind == "vote":
+            if self.leader_timed_out():
+                self.expire_leader()
             if epoch > self.epoch + 1 or epoch < self.epoch:
                 return []
             candidate, proof = int(body["candidate"]), str(body["proof"])
@@ -402,7 +406,9 @@ class MeshNode:
         """Fence an expired leader and reject its old certificate and commands."""
         if not self.leader_timed_out():
             return
-        self.health.pop(self.leader, None)
+        expired_leader = self.leader
+        self.health.pop(expired_leader, None)
+        self._suspected_failed_leaders.add(expired_leader)
         self._min_authority_epoch = max(self._min_authority_epoch, self.epoch + 1)
         self.leader = None
         self.certificate = None
