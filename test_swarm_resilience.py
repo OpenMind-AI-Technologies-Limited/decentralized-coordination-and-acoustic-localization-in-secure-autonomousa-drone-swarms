@@ -76,6 +76,12 @@ class ResilientSwarmIntegrationTests(unittest.TestCase):
         self.assertAlmostEqual(
             self.sim.nodes[1].measured_peer_rtt_ms[2], latency_ms)
 
+    def test_personal_telemetry_model_remains_advisory_only(self):
+        result = self.sim.get_velocity_advisory(2)
+        self.assertTrue(result["advisory_only"])
+        self.assertNotEqual(result.get("collision_classifier"), True)
+        self.assertTrue(all(d.flight_mode == FlightMode.HOVER for d in self.drones.values()))
+
     def test_continuous_watchdog_holds_unsafe_inflight_simulated_motion(self):
         drone = self.drones[2]
         drone.flight_mode = FlightMode.FLYING
