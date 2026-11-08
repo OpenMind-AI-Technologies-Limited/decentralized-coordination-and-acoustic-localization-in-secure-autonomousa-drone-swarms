@@ -52,7 +52,7 @@ class UdpPeerTransport:
             if not 0 < len(packet) <= self.MAX_PACKET_BYTES:
                 return None
             return packet
-        except socket.timeout:
+        except (socket.timeout, BlockingIOError):
             return None
         except OSError:
             if self._closed:
