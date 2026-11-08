@@ -90,6 +90,8 @@ class MeshDashboard(QMainWindow):
         self.tasks_button.clicked.connect(self.send_tasks)
         self.acoustic_button = QPushButton("Simulate TDOA sound-source detection")
         self.acoustic_button.clicked.connect(self.simulate_acoustic)
+        self.beacon_button = QPushButton("Simulate known-beacon GPS-free XY")
+        self.beacon_button.clicked.connect(self.simulate_receiver_beacons)
         self.rtt_button = QPushButton("Measure authenticated UDP RTT")
         self.rtt_button.clicked.connect(self.measure_latency)
         self.failure_member = QComboBox()
@@ -105,6 +107,7 @@ class MeshDashboard(QMainWindow):
         action_layout.addWidget(self.failure_member, 1, 1)
         action_layout.addWidget(self.failure_button, 2, 2)
         action_layout.addWidget(self.acoustic_button, 3, 1)
+        action_layout.addWidget(self.beacon_button, 4, 1)
         action_layout.addWidget(self.rtt_button, 3, 2)
         content.addWidget(actions)
         self.acoustic_label = QLabel("Acoustic observation: no source estimate")
@@ -171,6 +174,7 @@ class MeshDashboard(QMainWindow):
             (" (replicas differ)" if len(heights) > 1 else " (replicas aligned)")
         )
         self.acoustic_button.setEnabled(self._started and leader is not None)
+        self.beacon_button.setEnabled(self._started and leader is not None)
         self.rtt_button.setEnabled(self._started and leader is not None)
         self.formation_button.setEnabled(self._ready_to_command())
         self.tasks_button.setEnabled(self._ready_to_command())
@@ -261,6 +265,40 @@ class MeshDashboard(QMainWindow):
                 self.acoustic_label.setText("TDOA rejected: " + result.get("reason", "unknown"))
         except (ValueError, PermissionError, OSError, RuntimeError) as exc:
             self.status.setText(f"Acoustic processing refused: {exc}")
+        self.refresh()
+
+    def simulate_receiver_beacons(self):
+        """Synchronized known-anchor simulation, not real satellite-free flight."""
+        if not self._started or self.sim.leader() is None:
+            self.status.setText("Beacon simulation refused without quorum.")
+            return
+        receiver_id = next((i for i in self.sim.drones
+                            if not self.sim._runtimes[i]._stop.is_set()), None)
+        if receiver_id is None:
+            return
+        position = self.sim.drones[receiver_id].current_position
+        truth = (float(position.x), float(position.y))
+        anchors = {11: (0., 0.), 12: (40., 0.),
+                   13: (0., 40.), 14: (40., 40.)}
+        schedule = {11: 0., 12: .11, 13: .23, 14: .36}
+        arrivals = {
+            i: schedule[i] + .05 + math.dist(truth, point) / SPEED_OF_SOUND_MPS
+            for i, point in anchors.items()
+        }
+        try:
+            result = self.sim.localize_receiver_from_beacons(
+                receiver_id, anchors, schedule, arrivals, 0.00001)
+            if result.get("localized"):
+                point = result["receiver_position"]
+                self.acoustic_label.setText(
+                    f"Known-beacon receiver {receiver_id} XY: "
+                    f"({point['x']:.1f}, {point['y']:.1f}) m; simulated anchors"
+                )
+                self.status.setText("Known-beacon XY estimate audited; flight state unchanged.")
+            else:
+                self.status.setText(f"Receiver estimate rejected: {result.get('reason')}")
+        except (ValueError, PermissionError, RuntimeError, OSError) as exc:
+            self.status.setText(f"Receiver estimate refused: {exc}")
         self.refresh()
 
     def measure_latency(self):
