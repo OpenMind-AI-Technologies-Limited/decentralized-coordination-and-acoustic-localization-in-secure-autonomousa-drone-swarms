@@ -99,6 +99,26 @@ class MeshTests(unittest.TestCase):
         self.clock.now -= 1.5
         self.assertFalse(self.nodes[1].leader_timed_out())
 
+    def test_partition_expiry_revokes_quorum_command_authority(self):
+        self.elect_all()
+        # The leader may remain healthy locally; its peers have disappeared.
+        self.clock.now += 6.0
+        self.nodes[0].publish_health(HealthReport(90, 100, 90))
+        self.assertFalse(self.nodes[0].has_fresh_quorum())
+        with self.assertRaises(PermissionError):
+            self.nodes[0].issue_command({"kind": "formation", "pattern": "v"})
+
+    def test_delayed_old_command_is_rejected_after_authority_fenced(self):
+        self.elect_all()
+        delayed = self.nodes[0].issue_command({"kind": "goto", "target_xyz": [5, 5, 10]})
+        self.clock.now += 6.0
+        follower = self.nodes[1]
+        follower.expire_leader()
+        self.assertIsNone(follower.leader)
+        follower.receive(delayed)
+        self.assertEqual(follower.delivered_commands, [])
+        self.assertIsNone(follower.leader)
+
     def test_equivocation_is_detected(self):
         voter = self.nodes[3]
         first = voter.begin_election(candidate=1)
