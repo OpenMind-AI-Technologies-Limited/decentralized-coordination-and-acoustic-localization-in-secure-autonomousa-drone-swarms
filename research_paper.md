@@ -55,7 +55,7 @@ The unknown-sound-source experiment uses four fixed microphones and generates de
 
 ## 4. Experimental protocol and reproducibility
 
-All reported numbers in this paper are derived from a successfully completed GitHub Actions evidence archive for repository revision `d7393ba91166acd3b632cbb51a584b5611196edb` with manifest seed 2026, Python 3.11.18 on Linux. It contains 378 raw observations, partitioned into 192 election, 96 formation, 48 allocation, 24 receiver and 18 source-localization rows. These rows cover 63 settings; each setting contains six repeated seeded observations. Subsequent optimization or figure-generation commits must be rerun before mixing their measurements with this archived dataset.
+All reported numbers in this paper are derived from a successfully completed GitHub Actions evidence archive for repository revision `78cce082c5acabe68ebc5f76a32872b210308af5` with manifest seed 2026, Python 3.11.18 on Linux. It contains 378 raw observations, partitioned into 192 election, 96 formation, 48 allocation, 24 receiver and 18 source-localization rows. These rows cover 63 settings; each setting contains six repeated seeded observations. Subsequent optimization or figure-generation commits must be rerun before mixing their measurements with this archived dataset.
 
 The experiment harness uses the actual signing, decryption, election and certificate validation code, but replaces real UDP transport with a seeded discrete-event packet queue that assigns 1–12 ms *virtual* packet delays. It includes a nominal 15% packet-loss scenario with three signed vote retransmission rounds, signed vote withholding and equivocation, corrupted wire packets, partitioned connectivity, and deliberate simulated leader failure. We log transmitted and delivered packets/bytes, rejected envelopes and observed certificate outcomes. A virtual clock is not an RF round-trip-time measurement; host execution time is not an autopilot command latency.
 
@@ -144,7 +144,7 @@ An open, opt-in UAV-swarm software prototype was evaluated using real signed ele
 
 ## Data availability
 
-The exact data source is the GitHub Actions **seeded-swarm-experiment-evidence** artifact for the experimental repository revision `d7393ba91166acd3b632cbb51a584b5611196edb` (manifest date 8 November 2026). The archive includes 378 raw trial rows, per-setting summaries, the manifest and generated report. Repository: https://github.com/smshagor-dev/decentralized-coordination-and-acoustic-localization-in-secure-autonomousa-drone-swarms . The supplementary ZIP delivered with this manuscript preserves the verified experiment archive. The analyses and figures in this manuscript use that archive only; they must be regenerated before substituting a later code revision.
+The exact data source is the GitHub Actions **seeded-swarm-experiment-evidence** artifact for the experimental repository revision `78cce082c5acabe68ebc5f76a32872b210308af5` (manifest date 8 November 2026). The archive includes 378 raw trial rows, per-setting summaries, the manifest and generated report. Repository: https://github.com/smshagor-dev/decentralized-coordination-and-acoustic-localization-in-secure-autonomousa-drone-swarms . The supplementary ZIP delivered with this manuscript preserves the verified experiment archive. The analyses and figures in this manuscript use that archive only; they must be regenerated before substituting a later code revision.
 
 ## Code availability
 
