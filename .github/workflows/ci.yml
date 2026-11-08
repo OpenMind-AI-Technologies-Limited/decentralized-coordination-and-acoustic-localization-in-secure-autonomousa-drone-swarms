@@ -54,9 +54,10 @@ jobs:
             test_swarm_coordination.py test_swarm_identity_store.py \
             test_mesh_simulation.py test_swarm_deployment.py \
             test_swarm_dashboard.py test_swarm_tasks.py test_swarm_scaling.py \
-            acoustic_quality.py acoustic_benchmark.py swarm_safety.py quorum_audit.py \
-            swarm_model_validation.py \
-            test_acoustic_quality.py test_acoustic_benchmark.py test_ledger_integrity.py \
+            acoustic_quality.py acoustic_benchmark.py beacon_localization.py \
+            swarm_safety.py quorum_audit.py swarm_model_validation.py \
+            test_acoustic_quality.py test_acoustic_benchmark.py \
+            test_beacon_localization.py test_ledger_integrity.py \
             test_swarm_safety.py test_quorum_audit.py \
             test_swarm_resilience.py test_swarm_model_validation.py \
             tests/gui_smoke_test.py
@@ -77,6 +78,7 @@ jobs:
             test_swarm_scaling.py \
             test_acoustic_quality.py \
             test_acoustic_benchmark.py \
+            test_beacon_localization.py \
             test_quorum_audit.py \
             test_ledger_integrity.py \
             test_swarm_safety.py \
