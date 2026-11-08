@@ -22,11 +22,13 @@
 
 - `swarm_mesh.py`: independent `MeshNode` identity and state, normalized MCSS health model (45% battery, 35% motor, 20% link), Ed25519-signed votes, quorum election certificates, epoch tracking, replay window, known-node authentication, AES-256-GCM packet confidentiality and certified command acceptance.
 - `swarm_transport.py`: peer-addressed UDP packet delivery. No master scheduling of leader state.
-- `swarm_runtime.py`: per-drone process runtime. Uses caller-supplied health and safe action callbacks, sends authenticated heartbeat telemetry, detects leader heartbeat timeout, retries election and dispatches only certificate-authorized instructions.
-- `swarm_formation.py`: each recipient computes its own deterministic V/line/circle/grid slot, with neighbor separation adjustments.
-- `test_swarm_coordination.py`: checks quorum election, replay, unknown identity, forged certificate, partition refusal, equivocating vote, UDP packet delivery, formation math and four independent local UDP agents.
+- `swarm_runtime.py`: separately scheduled per-drone loopback agent with caller-supplied health/command callbacks. It distributes signed certificates and refuses stale-quorum commands; this is not a distributed operating-system process cluster.
+- `swarm_formation.py`: each recipient computes deterministic V/line/circle/grid slots, with neighbor separation adjustments.
+- `swarm_tasks.py`: explicit greedy health-weighted task allocation (not globally optimal/leaderless).
+- `mesh_simulation.py`: headless opt-in adapter to existing `Drone` kinematics. Refuses real drone connections, accepts only certificate-authorized goto requests, validates flight state, radius and altitude, and tracks accepted/rejected commands.
+- `test_swarm_coordination.py`, `test_swarm_tasks.py`, `test_mesh_simulation.py`: individual-node elections, invalid signatures, partitions, revoked old commands, 50-node *assignment function* (not 50-vehicle flight), UDP recovery, task targets and real Drone simulator integration.
 
-The old UI, `SwarmManager` and `Drone` paths remain untouched to prevent accidental hardware behavior changes. The new runtime is **experimental and opt-in**, not yet the default GUI flight controller.
+The default GUI and `SwarmManager` paths remain unchanged. This branch connects the new runtime to existing `Drone` simulated physics **only through a separate opt-in adapter**. It does not replace the default GUI or certify physical flight.
 
 ## Election safety claim and assumptions
 
@@ -34,23 +36,25 @@ Registered membership `N`, declared Byzantine faults `f`, and quorum `q=N-f` req
 
 This is **same-epoch quorum-certificate safety under stated assumptions**. It is *not* a full asynchronous Byzantine consensus protocol, or proof of termination/liveness in an arbitrary partition. A minority partition cannot produce a new certificate in the four-node test. A malicious node may lie about its own fitness: reported health is authenticated by origin but is not independently attested.
 
-**Not yet implemented/proved:** member admission/revocation, persisted key management, distributed score attestation, strong transport availability, threshold/three-phase BFT protocol, automatic recovery from all competing election views, bounded failure detection under arbitrary network delay, real autopilot integration.
+**Not yet implemented/proved:** member admission/revocation, persisted signing keys and crash-recovery vote journal, distributed score attestation, strong transport availability, threshold/three-phase BFT protocol, automatic recovery from all competing election views, bounded failure detection under arbitrary network delay, real autopilot integration. Node identities and group keys are generated ephemerally for the simulation; the replica execution still shares one host process.
 
 ## Reproducibility and test commands
 
 ```bash
-python -m pip install cryptography pytest
-python -m pytest -q test_swarm_coordination.py
-python -m pytest -q test_dynamic_features.py test_ledger_and_acoustic.py test_swarm_coordination.py
+python -m pip install -r requirements.txt
+python -m pip install pytest
+python -m pytest -q test_swarm_coordination.py test_swarm_tasks.py test_mesh_simulation.py
+python -m pytest -q test_dynamic_features.py test_ledger_and_acoustic.py
+python mesh_simulation.py  # headless, simulation only
 ```
 
-The independent UDP test binds loopback addresses and never arms or moves a real drone. Signed formation actions are delivered to a caller-provided callback, which must enforce geofence, altitude, physical separation, and autopilot constraints.
+The independent UDP and Drone-physics integration tests bind loopback addresses and never arm or move a real drone. Signed formation actions are delivered to a caller-provided callback, which must enforce geofence, altitude, physical separation, and autopilot constraints.
 
 ## Publication blockers
 
 1. Reconcile MCSS equation and implementation. Baseline uses 40/30/30; experimental node uses 45/35/20. Do not silently claim the new node replaces the old manager.
 2. Establish a justified distributed threat model, evidence of fault limits, certificate safety, and realistic termination assumptions.
-3. Integrate new mesh runtime into existing simulation and instrument all state transitions, election recovery timing, and message volumes.
+3. Expand the initial opt-in Drone simulation integration into a reproducible experimental harness with measured failure-recovery timing, message volumes and formation stability.
 4. Test failure injection, reconnection, adversarial schedules, forged telemetry, simultaneous elections, view changes, sparse communication and large-scale fleets.
 5. Benchmark formations against explicit baselines using trajectories, collisions, energy, formation error and completion probability; repeat experiments and publish raw metrics.
 6. Correct paper reference-list holes `[47]`, `[48]`, `[49]`, absent Table I/II bodies, inconsistent acoustic test geometry and simulated RTT claims.
