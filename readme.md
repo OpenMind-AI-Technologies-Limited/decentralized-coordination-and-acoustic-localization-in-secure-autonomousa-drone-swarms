@@ -24,16 +24,20 @@ A separate per-drone coordination runtime is available on this development branc
 - `swarm_transport.py` / `swarm_runtime.py`: peer-addressed UDP delivery and independent local node loops.
 - `swarm_formation.py`: local V, line, circle and grid formation reference points with simple peer separation.
 - `test_swarm_coordination.py`: adversarial, UDP delivery, leader-failover and formation checks.
+- `mesh_simulation.py`: optional adapter using actual `Drone` kinematics and state, independent certified mesh command transport, and strict rejection of physical MAVSDK connections.
+- `test_mesh_simulation.py`: real simulator control-path, safety refusal and crash recovery integration tests.
 
-Run a **loopback simulation without physical UAV connections**:
+Run **loopback-only coordination + actual Drone physics** (not physical UAV connections):
 
 ```bash
 python -m pip install cryptography pytest
-python -m pytest -q test_swarm_coordination.py
-python mesh_demo.py
+python -m pytest -q test_swarm_coordination.py test_mesh_simulation.py
+python mesh_demo.py                    # transport-only demo
+python mesh_simulation.py              # actual simulated Drone physics
+python main.py --mesh-simulation       # same opt-in physics demo via entry point
 ```
 
-The existing GUI and `SwarmManager` continue to use their original in-process control path. The new runtime is **not yet integrated into the default controller** and is not certified for real flight. Quorum certificate safety assumes fixed, preauthenticated membership and honest nodes signing at most one candidate per epoch; **full Byzantine consensus, byzantine liveness, fault-safe autopilot integration and hardware validation are not claimed**. See [coordination research audit](Docs/COORDINATION_RESEARCH_AUDIT.md) for an explicit code-to-paper discrepancy list.
+The existing GUI and `SwarmManager` continue to use their original in-process control path. The experimental mesh adapter integrates with the existing `Drone` physics engine only, not with the default GUI or legacy manager; it is **not certified for physical flight**. Private keys and roster are ephemeral demo credentials, not production enrollment. Leader commands require a valid election certificate and recent heartbeats from a quorum. Quorum certificate safety assumes fixed, preauthenticated membership and honest nodes signing at most one candidate per epoch; **full Byzantine consensus, byzantine liveness, fault-safe autopilot integration and hardware validation are not claimed**. See [coordination research audit](Docs/COORDINATION_RESEARCH_AUDIT.md) for an explicit code-to-paper discrepancy list.
 
 ## Security
 
