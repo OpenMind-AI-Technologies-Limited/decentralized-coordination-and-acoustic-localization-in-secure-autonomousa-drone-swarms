@@ -88,7 +88,7 @@ class MeshRuntime:
                     self.logger.exception("Mesh receive error")
             now = time.monotonic()
             if self.node.leader_timed_out():
-                self.node.health.pop(self.node.leader, None)
+                self.node.expire_leader()
                 self._last_election = 0.0
             if self.node.leader is None and now - self._last_election >= self.election_retry_s:
                 fresh = sum(1 for _, seen_at in self.node.health.values()
