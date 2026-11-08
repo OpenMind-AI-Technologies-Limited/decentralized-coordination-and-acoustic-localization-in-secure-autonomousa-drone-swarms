@@ -57,6 +57,12 @@ def formation_trial(nodes: int, seed: int, pattern: str,
         "baseline_reference_error_m": mean(math.dist(observed[i], targets[i]) for i in ids),
         "adjusted_reference_error_m": mean(math.dist(adjusted[i], targets[i]) for i in ids),
         "suggested_displacement_m": mean(math.dist(adjusted[i], observed[i]) for i in ids),
+        "pair_violation_reduction": (
+            _close_pairs(original_positions) - _close_pairs(suggested_positions)
+        ),
+        "minimum_separation_change_m": (
+            _min_pair_distance(suggested_positions) - _min_pair_distance(original_positions)
+        ),
     }
 
 
@@ -105,4 +111,8 @@ def allocation_trial(nodes: int, seed: int, degraded: bool) -> dict:
         ),
         "baseline_mean_distance_m": mean(
             math.dist(positions[i], target) for i, _, target in naive),
+        "ineligible_assignment_reduction": (
+            sum(1 for i, _, _ in naive if i not in eligible)
+            - sum(1 for i, _, _ in pairs if i not in eligible)
+        ),
     }
