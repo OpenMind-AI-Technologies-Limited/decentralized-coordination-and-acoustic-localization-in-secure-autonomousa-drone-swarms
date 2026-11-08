@@ -45,6 +45,8 @@ class DroneMeshSimulation:
         self._lock = threading.RLock()
         self.events: list[dict] = []
         self.running = False
+        self._safety_stop = threading.Event()
+        self._safety_thread: Optional[threading.Thread] = None
         self._owned_drone_ids: set[int] = set()
         self._runtimes: dict[int, MeshRuntime] = {}
         self._transports: dict[int, UdpPeerTransport] = {}
@@ -138,6 +140,11 @@ class DroneMeshSimulation:
             if not decision.allowed:
                 event["fallback"] = decision.fallback
                 event["predicted_collision_risk"] = decision.predicted_risk
+                if decision.fallback == "local_rth":
+                    drone.return_to_home("Simulation-local safety fallback")
+                elif decision.fallback == "hold" and drone.flight_mode == FlightMode.FLYING:
+                    drone.target_position = None
+                    drone.flight_mode = FlightMode.HOVER
                 raise ValueError(decision.reason)
             if not drone.goto(Position(*xyz)):
                 raise ValueError("Drone rejected target under its own flight constraints")
@@ -164,6 +171,48 @@ class DroneMeshSimulation:
                 self._owned_drone_ids.add(node_id)
         for runtime in self._runtimes.values():
             runtime.start()
+        self._safety_stop.clear()
+        self._safety_thread = threading.Thread(
+            target=self._safety_loop, name="simulated-swarm-safety", daemon=True)
+        self._safety_thread.start()
+
+    def safety_sweep(self) -> None:
+        """Fail safely for *running simulated drones* after quorum/health loss."""
+        if not self.running:
+            return
+        for node_id, drone in self.drones.items():
+            runtime = self._runtimes[node_id]
+            if runtime._stop.is_set() or not drone.is_active:
+                continue
+            if (drone.battery_level <= self.motion_safety.battery_reserve_pct or
+                    any(not motor.operational for motor in drone.motors)):
+                if drone.flight_mode in (FlightMode.HOVER, FlightMode.FLYING):
+                    drone.return_to_home("Local battery/motor safety guard")
+                continue
+            if drone.flight_mode != FlightMode.FLYING:
+                continue
+            available = runtime.node.has_fresh_quorum() and runtime.node.leader is not None
+            latency_bad = (self.observed_latency_ms is not None and
+                           self.observed_latency_ms > self.motion_safety.latency_limit_ms)
+            if not available or latency_bad:
+                drone.target_position = None
+                drone.flight_mode = FlightMode.HOVER
+                with self._lock:
+                    self.events.append({
+                        "drone_id": node_id, "kind": "continuous_safety_hold",
+                        "accepted": False,
+                        "reason": "quorum_unavailable" if not available else "latency_limit_exceeded",
+                    })
+
+    def _safety_loop(self):
+        while not self._safety_stop.wait(0.12):
+            try:
+                self.safety_sweep()
+            except Exception:
+                # Keep the flight-simulation monitor alive even if an
+                # unrelated optional telemetry field is temporarily invalid.
+                with self._lock:
+                    self.events.append({"kind": "safety_monitor_error", "accepted": False})
 
     def stop_node(self, node_id: int) -> None:
         """Crash a simulated node and stop its UDP channel and physical model."""
@@ -356,6 +405,10 @@ class DroneMeshSimulation:
                 transport.close()
             return
         self.running = False
+        self._safety_stop.set()
+        if self._safety_thread is not None:
+            self._safety_thread.join(timeout=2.0)
+            self._safety_thread = None
         for runtime in self._runtimes.values():
             runtime.stop()
         for node_id in list(self._owned_drone_ids):
