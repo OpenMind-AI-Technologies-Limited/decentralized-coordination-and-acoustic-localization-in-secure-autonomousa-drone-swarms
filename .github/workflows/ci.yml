@@ -59,6 +59,7 @@ jobs:
             swarm_formation.py \
             swarm_transport.py \
             swarm_runtime.py \
+            mesh_demo.py \
             test_swarm_coordination.py \
             test_ledger_and_acoustic.py \
             tests/gui_smoke_test.py
