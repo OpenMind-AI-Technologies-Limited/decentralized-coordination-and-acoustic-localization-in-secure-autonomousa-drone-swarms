@@ -45,7 +45,7 @@ scenario definitions, transparent baseline limitations and reproducibility.
 
 ## Current manuscript and evidence
 
-**Current research manuscript:** [Reproducible Software Validation of Authenticated UAV Swarm Coordination](research_paper.md). This journal-neutral 27-reference manuscript uses 378 archived synthetic trial rows from experiment revision `d7393ba91166acd3b632cbb51a584b5611196edb`, with visible source attribution and explicit validity limits. The five research figures are stored as text-based SVG files in [figures/](figures/).
+**Current research manuscript:** [Reproducible Software Validation of Authenticated UAV Swarm Coordination](research_paper.md). This journal-neutral 27-reference manuscript uses 378 archived synthetic trial rows from experiment revision `78cce082c5acabe68ebc5f76a32872b210308af5`, with visible source attribution and explicit validity limits. The five research figures are stored as text-based SVG files in [figures/](figures/).
 
 **Do not submit the older `Docs/Research-Paper.pdf` as the current evidence-backed manuscript.** It represents an earlier proposal and contains claims not substantiated by these software-validation experiments. The new manuscript replaces its claims; the approved PDF/DOCX manuscript is provided separately as the submission package.
 
