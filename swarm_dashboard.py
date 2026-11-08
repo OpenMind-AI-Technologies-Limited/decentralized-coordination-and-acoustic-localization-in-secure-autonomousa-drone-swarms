@@ -8,6 +8,10 @@ from __future__ import annotations
 import math
 from typing import Optional
 
+import numpy as np
+
+from acoustic_tracking import SPEED_OF_SOUND_MPS
+
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (
     QApplication, QComboBox, QGridLayout, QGroupBox, QHBoxLayout, QLabel,
@@ -60,7 +64,9 @@ class MeshDashboard(QMainWindow):
         self.leader_label = QLabel("Leader: acquiring quorum")
         self.quorum_label = QLabel("Quorum: pending")
         self.nodes_label = QLabel("Nodes: 0")
-        for widget in (self.leader_label, self.quorum_label, self.nodes_label):
+        self.audit_label = QLabel("Signed audit: no commits")
+        for widget in (self.leader_label, self.quorum_label, self.nodes_label,
+                       self.audit_label):
             metrics.addWidget(widget)
         content.addLayout(metrics)
 
@@ -82,6 +88,10 @@ class MeshDashboard(QMainWindow):
         self.formation_button.clicked.connect(self.send_formation)
         self.tasks_button = QPushButton("Allocate inspection tasks")
         self.tasks_button.clicked.connect(self.send_tasks)
+        self.acoustic_button = QPushButton("Simulate TDOA sound-source detection")
+        self.acoustic_button.clicked.connect(self.simulate_acoustic)
+        self.rtt_button = QPushButton("Measure authenticated UDP RTT")
+        self.rtt_button.clicked.connect(self.measure_latency)
         self.failure_member = QComboBox()
         self.failure_member.addItems([str(i) for i in sorted(self.sim.drones)])
         self.failure_button = QPushButton("Simulate selected drone failure")
@@ -94,7 +104,13 @@ class MeshDashboard(QMainWindow):
         action_layout.addWidget(QLabel("Failure target"), 1, 0)
         action_layout.addWidget(self.failure_member, 1, 1)
         action_layout.addWidget(self.failure_button, 2, 2)
+        action_layout.addWidget(self.acoustic_button, 3, 1)
+        action_layout.addWidget(self.rtt_button, 3, 2)
         content.addWidget(actions)
+        self.acoustic_label = QLabel("Acoustic observation: no source estimate")
+        self.rtt_label = QLabel("Measured peer RTT: not measured")
+        content.addWidget(self.acoustic_label)
+        content.addWidget(self.rtt_label)
 
         self.status = QLabel("Initializing loopback-only simulated drone physics.")
         content.addWidget(self.status)
@@ -148,6 +164,14 @@ class MeshDashboard(QMainWindow):
         quorum = next(iter(nodes.values())).quorum
         self.quorum_label.setText(f"Quorum: {quorum}/{len(nodes)}")
         self.nodes_label.setText(f"Running: {active}/{len(nodes)}")
+        heights = {audit.height for audit in self.sim.audit_ledgers.values()}
+        latest_height = max(heights) if heights else 0
+        self.audit_label.setText(
+            f"Quorum audit: height {latest_height}" +
+            (" (replicas differ)" if len(heights) > 1 else " (replicas aligned)")
+        )
+        self.acoustic_button.setEnabled(self._started and leader is not None)
+        self.rtt_button.setEnabled(self._started and leader is not None)
         self.formation_button.setEnabled(self._ready_to_command())
         self.tasks_button.setEnabled(self._ready_to_command())
         for row, node_id in enumerate(sorted(self.sim.drones)):
@@ -201,6 +225,60 @@ class MeshDashboard(QMainWindow):
         except (PermissionError, ValueError, OSError) as exc:
             self.status.setText(f"Task allocation refused: {exc}")
         self.refresh()
+
+    def simulate_acoustic(self):
+        """Explicitly synthetic audio pulses; never autonomous real movement."""
+        if not self._started or self.sim.leader() is None:
+            self.status.setText("Acoustic observation refused without certified quorum.")
+            return
+        points = {i: (d.current_position.x, d.current_position.y)
+                  for i, d in self.sim.drones.items()}
+        source = (4.0, 8.0)
+        rate = 48000.0
+        distances = {i: math.dist(p, source) for i, p in points.items()}
+        earliest = min(distances.values())
+        signals = {}
+        for i, distance in distances.items():
+            pulse = np.zeros(16384)
+            index = 256 + round(((distance - earliest) / SPEED_OF_SOUND_MPS) * rate)
+            if index >= pulse.size:
+                self.status.setText("Synthetic sensor window is too short.")
+                return
+            pulse[index] = 1.0
+            signals[i] = pulse
+        try:
+            result = self.sim.localize_acoustic(
+                signals, rate, clock_uncertainty_s=0.00001,
+            )
+            if result.get("detected"):
+                p = result["source_position"]
+                self.acoustic_label.setText(
+                    f"Synthetic acoustic SOURCE XY: ({p['x']:.1f}, {p['y']:.1f}) m; "
+                    f"TDOA residual {result['tdoa_residual_rmse_m']:.3f} m"
+                )
+                self.status.setText("Source observation processed; no automatic flight.")
+            else:
+                self.acoustic_label.setText("TDOA rejected: " + result.get("reason", "unknown"))
+        except (ValueError, PermissionError, OSError, RuntimeError) as exc:
+            self.status.setText(f"Acoustic processing refused: {exc}")
+        self.refresh()
+
+    def measure_latency(self):
+        """Measure actual signed localhost UDP RTT, not synthetic IPC values."""
+        leader = self.sim.leader() if self._started else None
+        if leader is None:
+            self.status.setText("RTT unavailable without quorum leader.")
+            return
+        target = next((i for i in self.sim.drones if i != leader and
+                       not self.sim._runtimes[i]._stop.is_set()), None)
+        if target is None:
+            return
+        try:
+            value = self.sim.measure_peer_rtt(target, timeout_s=1.5)
+            self.sim.set_observed_latency_ms(value)
+            self.rtt_label.setText(f"Measured UDP RTT leader->{target}: {value:.2f} ms")
+        except (ValueError, TimeoutError, OSError) as exc:
+            self.status.setText(f"RTT probe failed: {exc}")
 
     def fail_member(self):
         node_id = int(self.failure_member.currentText())
