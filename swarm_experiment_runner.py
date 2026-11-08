@@ -206,6 +206,8 @@ def main(argv=None):
     parser.add_argument("--loss-rate", type=float, default=0.15)
     parser.add_argument("--bootstrap-samples", type=int, default=1000)
     parser.add_argument("--out", default="experiment_outputs/swarm")
+    parser.add_argument("--figures", action="store_true",
+                        help="Render PNG and SVG figures using matplotlib")
     args = parser.parse_args(argv)
     rows, summary = run_suite(args.sizes, args.trials, args.seed, args.families,
                               args.network_scenarios, args.loss_rate,
@@ -216,6 +218,9 @@ def main(argv=None):
                            network_scenarios=args.network_scenarios,
                            loss_rate=args.loss_rate,
                            bootstrap_samples=args.bootstrap_samples)
+    if args.figures:
+        from experiment_figures import plot_evidence
+        files["figures"] = plot_evidence(summary, Path(args.out) / "figures")
     print(json.dumps({"trials_recorded": len(rows),
                       "experiment_settings": len(summary), "files": files},
                      sort_keys=True))
