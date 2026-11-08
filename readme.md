@@ -17,6 +17,24 @@
 
 This is an end-to-end multi-drone swarm platform designed for high-security environments and vision-impaired conditions. The system integrates advanced Decentralized Coordination, Dynamic Obstacle Avoidance, and Acoustic Source Localization to ensure mission success even when GPS or visual data fails.
 
+## Authenticated distributed mesh (experimental, opt-in)
+
+A separate per-drone coordination runtime is available on this development branch:
+- `swarm_mesh.py`: Ed25519 member identities, signed encrypted messages, MCSS fitness scoring, epoch-bound quorum certificates, and certified commands.
+- `swarm_transport.py` / `swarm_runtime.py`: peer-addressed UDP delivery and independent local node loops.
+- `swarm_formation.py`: local V, line, circle and grid formation reference points with simple peer separation.
+- `test_swarm_coordination.py`: adversarial, UDP delivery, leader-failover and formation checks.
+
+Run a **loopback simulation without physical UAV connections**:
+
+```bash
+python -m pip install cryptography pytest
+python -m pytest -q test_swarm_coordination.py
+python mesh_demo.py
+```
+
+The existing GUI and `SwarmManager` continue to use their original in-process control path. The new runtime is **not yet integrated into the default controller** and is not certified for real flight. Quorum certificate safety assumes fixed, preauthenticated membership and honest nodes signing at most one candidate per epoch; **full Byzantine consensus, byzantine liveness, fault-safe autopilot integration and hardware validation are not claimed**. See [coordination research audit](Docs/COORDINATION_RESEARCH_AUDIT.md) for an explicit code-to-paper discrepancy list.
+
 ## Security
 
 For private vulnerability reporting and security handling expectations, see [SECURITY.md](SECURITY.md).
