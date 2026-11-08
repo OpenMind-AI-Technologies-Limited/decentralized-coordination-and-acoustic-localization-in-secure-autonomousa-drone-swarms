@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 from swarm_deployment import load_member, provision_members
 
@@ -61,6 +62,27 @@ class ProvisioningTests(unittest.TestCase):
                 config.chmod(0o600)
             with self.assertRaises(ValueError):
                 load_member(directory)
+
+    def test_operator_signature_rejects_modified_peer_addresses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = provision_members(Path(tmp) / "fleet", 4, _free_port_block())[0]
+            record_path = path / "member.json"
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+            record["addresses"]["2"][1] += 7
+            record_path.write_text(json.dumps(record), encoding="utf-8")
+            if os.name == "posix":
+                record_path.chmod(0o600)
+            with self.assertRaises(ValueError):
+                load_member(path)
+
+    def test_external_authority_pin_refuses_untrusted_bundle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = provision_members(Path(tmp) / "fleet", 4, _free_port_block())[0]
+            with mock.patch.dict(
+                os.environ, {"SWARM_MESH_AUTHORITY_PUB_HEX": "ff" * 32},
+            ):
+                with self.assertRaises(PermissionError):
+                    load_member(path)
 
     def test_unknown_member_and_unsafe_port_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
