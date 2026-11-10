@@ -1,0 +1,16 @@
+claim_id,description,source_commit,family,scenario,N,metric,aggregation,observations,calculated_value
+E1,N=50 signed healthy election successes,78cce082c5acabe68ebc5f76a32872b210308af5,election,healthy,50,converged,success_count,6,6
+E2,N=50 packet-loss election successes,78cce082c5acabe68ebc5f76a32872b210308af5,election,packet_loss,50,converged,success_count,6,6
+E3,N=50 safe no-certificate partition trials,78cce082c5acabe68ebc5f76a32872b210308af5,election,minority_partition,50,certified_honest_nodes,safe_no_certificate_count,6,6
+E4,N=50 healthy wire packets transmitted per trial,78cce082c5acabe68ebc5f76a32872b210308af5,election,healthy,50,packets_sent,mean,6,9800.0
+E5,N=50 simulated failure scenario virtual elapsed milliseconds,78cce082c5acabe68ebc5f76a32872b210308af5,election,leader_failure,50,virtual_time_ms,mean,6,5279.545666667
+E6,N=50 V reference waypoint close-pair baseline,78cce082c5acabe68ebc5f76a32872b210308af5,formation,v,50,baseline_pair_violations,mean,6,1.166666667
+E7,N=50 V adjusted waypoint close pairs,78cce082c5acabe68ebc5f76a32872b210308af5,formation,v,50,adjusted_waypoint_violations,mean,6,0.0
+E8,N=50 degraded task naive ineligible assignments,78cce082c5acabe68ebc5f76a32872b210308af5,allocation,degraded,50,baseline_ineligible_assignments,mean,6,7.0
+E9,N=50 degraded task greedy ineligible assignments,78cce082c5acabe68ebc5f76a32872b210308af5,allocation,degraded,50,ineligible_assignments,mean,6,0.0
+E10,Known-beacon 100us conditional XY position error in meters,78cce082c5acabe68ebc5f76a32872b210308af5,beacon_receiver,known_beacons_jitter_100us,4,position_error_m,mean,6,0.04373785
+E11,Known-beacon 350us conditional XY position error in meters,78cce082c5acabe68ebc5f76a32872b210308af5,beacon_receiver,known_beacons_jitter_350us,4,position_error_m,mean,6,0.153166
+E12,No-reference beacon successful localizations,78cce082c5acabe68ebc5f76a32872b210308af5,beacon_receiver,no_beacon_reference,4,localized,success_count,6,0
+E13,Sound source noise=0.05 successful detections,78cce082c5acabe68ebc5f76a32872b210308af5,acoustic_source,impulse_noise_0.05,4,detected,success_count,6,5
+E14,Sound source noise=0.05 conditional XY error in meters,78cce082c5acabe68ebc5f76a32872b210308af5,acoustic_source,impulse_noise_0.05,4,position_error_m,mean,6,10.226342745
+E15,Sound source noise=0.05 missing XY errors,78cce082c5acabe68ebc5f76a32872b210308af5,acoustic_source,impulse_noise_0.05,4,position_error_m,missing_count,6,1
