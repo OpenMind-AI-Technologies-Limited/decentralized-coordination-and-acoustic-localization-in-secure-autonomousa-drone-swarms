@@ -1,0 +1,53 @@
+name: Archive verified S1 S2 supplementary evidence
+
+on:
+  push:
+    branches:
+      - supplementary-s1-s2-archive-2026-11-10
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  save-supplementary:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the source branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download original experiment evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p evidence_download
+          gh run download 42455738522 \
+            --name seeded-swarm-experiment-evidence \
+            --dir evidence_download
+      - name: Verify source evidence and assemble S1 S2 and supporting files
+        run: |
+          python scripts/archive_supplementary_evidence.py
+      - name: Commit verified archived files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add supplementary/uav-swarm-authority-v1.0.0
+          git diff --cached --quiet && { echo "No changes to archive"; exit 0; }
+          git commit -m "Archive verified supplementary S1 S2 figures methods and integrity evidence"
+          git push origin HEAD:refs/heads/supplementary-s1-s2-archive-2026-11-10
+      - name: Tag the verified evidence commit
+        run: |
+          TAG="uav-swarm-supplementary-s1-s2-v1.0.0"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "Tag exists, leaving it unchanged"
+          else
+            git tag -a "$TAG" -m "Verified S1 and S2 supplementary evidence; 378 runs, 63 settings"
+            git push origin "refs/tags/$TAG"
+          fi

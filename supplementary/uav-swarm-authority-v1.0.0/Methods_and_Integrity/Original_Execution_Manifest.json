@@ -1,0 +1,42 @@
+{
+  "bootstrap_samples": 500,
+  "families": [
+    "election",
+    "formation",
+    "allocation",
+    "beacon_receiver",
+    "acoustic_source"
+  ],
+  "full_byzantine_consensus_proven": false,
+  "generated_at_utc": "2026-11-08T06:43:46.993972+00:00",
+  "gps_denied_autonomous_flight": false,
+  "network_scenarios": [
+    "healthy",
+    "packet_loss",
+    "byzantine_withholding",
+    "byzantine_equivocation",
+    "tampered_packets",
+    "quorum_partition",
+    "minority_partition",
+    "leader_failure"
+  ],
+  "packet_loss_fraction": 0.15,
+  "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
+  "python": "3.11.18",
+  "radio_latency_measured": false,
+  "raw_rows": 378,
+  "real_uav_hardware": false,
+  "schema_version": 1,
+  "scope": "software_simulation_only",
+  "seed": 2026,
+  "sizes": [
+    5,
+    10,
+    20,
+    50
+  ],
+  "source_revision": "78cce082c5acabe68ebc5f76a32872b210308af5",
+  "synthetic_acoustic_only": true,
+  "trials": 6,
+  "trials_json_sha256": "d35cb10e2f6e1c2d7fbad4c08f20b6584930949c70b84bb5f7eb05089fa6e7c6"
+}
