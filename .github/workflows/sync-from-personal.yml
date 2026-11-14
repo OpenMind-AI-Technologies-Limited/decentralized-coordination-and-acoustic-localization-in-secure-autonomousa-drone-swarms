@@ -1,0 +1,99 @@
+# One-way mirror: smshagor-dev/decentralized-coordination-and-acoustic-localization-in-secure-autonomousa-drone-swarms:main -> OpenMind-AI-Technologies-Limited/decentralized-coordination-and-acoustic-localization-in-secure-autonomousa-drone-swarms:main
+# Code sync needs no extra secret for public repositories.
+# Optional ORG_SYNC_TOKEN needs Contents+Workflows write to update workflow files.
+name: Sync from personal GitHub
+on:
+  schedule:
+    - cron: '11-59/15 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+concurrency:
+  group: personal-source-sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    if: github.repository == 'OpenMind-AI-Technologies-Limited/decentralized-coordination-and-acoustic-localization-in-secure-autonomousa-drone-swarms'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout organization
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.ORG_SYNC_TOKEN || github.token }}
+      - name: Apply personal source changes without force-pushing
+        shell: bash
+        env:
+          UPSTREAM_TOKEN: ${{ secrets.ORG_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          upstream_url="https://github.com/smshagor-dev/decentralized-coordination-and-acoustic-localization-in-secure-autonomousa-drone-swarms.git"
+          if [[ -n "$UPSTREAM_TOKEN" ]]; then
+            upstream_url="https://x-access-token:${UPSTREAM_TOKEN}@github.com/smshagor-dev/decentralized-coordination-and-acoustic-localization-in-secure-autonomousa-drone-swarms.git"
+          fi
+          git remote add personal "$upstream_url"
+          git fetch --no-tags personal '+refs/heads/main:refs/remotes/personal/main'
+          upstream_sha="$(git rev-parse refs/remotes/personal/main)"
+          marker=.github/sync-state/personal-main-code.sha
+          workflows_marker=.github/sync-state/personal-main-workflows.sha
+          mkdir -p .github/sync-state
+          bootstrap=false
+
+          if ! initial_base="$(git merge-base HEAD "$upstream_sha")"; then
+            # Bootstrap only genuinely empty organization repos with this sync workflow.
+            other_files="$(git ls-files | grep -v -E '^\.github/workflows/sync-from-personal\.yml$|^\.github/sync-state/' || true)"
+            if [[ -n "$other_files" ]]; then
+              echo "::error::Unrelated non-empty repository histories. Manual reconciliation required."
+              exit 1
+            fi
+            git restore --source="$upstream_sha" --staged --worktree -- . ':(exclude).github/workflows' ':(exclude).github/sync-state'
+            initial_base="$upstream_sha"
+            bootstrap=true
+          fi
+
+          code_base="$(cat "$marker" 2>/dev/null || printf '%s' "$initial_base")"
+          if ! git merge-base --is-ancestor "$code_base" "$upstream_sha"; then
+            echo "::error::Personal history was rewritten since last sync; refusing unsafe replay."
+            exit 1
+          fi
+
+          if [[ "$bootstrap" != true ]]; then
+            git diff --binary "$code_base" "$upstream_sha" -- . \
+              ':(exclude).github/workflows' ':(exclude).github/sync-state' > "$RUNNER_TEMP/upstream-code.patch"
+            if [[ -s "$RUNNER_TEMP/upstream-code.patch" ]]; then
+              git apply --3way --index "$RUNNER_TEMP/upstream-code.patch"
+            fi
+          fi
+
+          if [[ -n "$UPSTREAM_TOKEN" ]]; then
+            workflow_base="$(cat "$workflows_marker" 2>/dev/null || printf '%s' "$initial_base")"
+            if ! git merge-base --is-ancestor "$workflow_base" "$upstream_sha"; then
+              echo "::error::Workflow sync baseline no longer belongs to personal history."
+              exit 1
+            fi
+            if [[ "$bootstrap" != true ]]; then
+              git diff --binary "$workflow_base" "$upstream_sha" -- .github/workflows \
+                ':(exclude).github/workflows/sync-from-personal.yml' > "$RUNNER_TEMP/upstream-workflows.patch"
+              if [[ -s "$RUNNER_TEMP/upstream-workflows.patch" ]]; then
+                git apply --3way --index "$RUNNER_TEMP/upstream-workflows.patch"
+              fi
+            fi
+            printf '%s\n' "$upstream_sha" > "$workflows_marker"
+            git add "$workflows_marker"
+          else
+            echo "::warning::Workflow YAML files need ORG_SYNC_TOKEN with Workflows write permission."
+          fi
+
+          printf '%s\n' "$upstream_sha" > "$marker"
+          git add "$marker"
+          if git diff --cached --quiet; then
+            echo "Already synchronized at $upstream_sha"
+            exit 0
+          fi
+          git commit -m "chore: sync personal decentralized-coordination-and-acoustic-localization-in-secure-autonomousa-drone-swarms at $upstream_sha"
+          git push origin HEAD:main
+          echo "Synced personal source: $upstream_sha" >> "$GITHUB_STEP_SUMMARY"
