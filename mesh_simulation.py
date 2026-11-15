@@ -13,13 +13,15 @@ import math
 import os
 import threading
 import time
-from typing import Mapping, Optional
+from typing import Mapping, Optional, Sequence
 
 from drone import Drone, FlightMode, Position
 from swarm_mesh import HealthReport, MeshNode, SwarmIdentity
 from swarm_identity_store import IdentityStore, VoteJournal
 from swarm_runtime import MeshRuntime
 from swarm_tasks import allocate_tasks
+from swarm_consistency_gate import (ConsistencyPolicy, SignedWitness,
+                                    consistency_gated_allocate)
 from swarm_transport import UdpPeerTransport
 from quorum_audit import QuorumAuditLedger
 from acoustic_tracking import AcousticTrackingSystem
@@ -434,8 +436,16 @@ class DroneMeshSimulation:
         })
         return leader_id
 
-    def command_tasks(self, tasks: Mapping[str, tuple[float, float, float]]) -> dict:
-        """Send a certified greedy task plan based on fresh signed telemetry."""
+    def command_tasks(
+        self, tasks: Mapping[str, tuple[float, float, float]], *,
+        consistency_policy: Optional[ConsistencyPolicy] = None,
+        witnesses: Optional[Mapping[int, Sequence[SignedWitness]]] = None,
+    ) -> dict:
+        """Send certified tasks; optionally apply a bounded evidence gate.
+
+        The original greedy allocator remains the default research baseline.
+        Independent witness signatures are checked against the local roster.
+        """
         leader_id = self.leader()
         if leader_id is None:
             raise PermissionError("No quorum-certified task coordinator available")
@@ -446,7 +456,21 @@ class DroneMeshSimulation:
             if peer in node.roster and 0 <= now - seen_at <= node.timeout_s
         }
         fresh_positions = {peer: node.positions[peer] for peer in fresh_health if peer in node.positions}
-        allocations = allocate_tasks(fresh_positions, fresh_health, tasks)
+        if consistency_policy is None:
+            if witnesses:
+                raise ValueError("Witnesses require an explicit consistency policy")
+            allocations = allocate_tasks(fresh_positions, fresh_health, tasks)
+            gated = None
+        else:
+            gated = consistency_gated_allocate(
+                positions=fresh_positions, health=fresh_health,
+                health_seen_at={peer: seen_at for peer, (_, seen_at) in node.health.items()},
+                position_seen_at=node.positions_seen_at,
+                previous_positions=node.previous_positions,
+                now=now, tasks=tasks, roster=node.roster, epoch=node.epoch,
+                policy=consistency_policy, witnesses=witnesses,
+            )
+            allocations = gated["allocations"]
         command_map = {
             str(peer): {"task_id": task_id, "target_xyz": list(target)}
             for peer, assignments in allocations.items()
@@ -463,11 +487,16 @@ class DroneMeshSimulation:
                 "kind": "task_assignment",
                 "assignments": command_map,
             })
-        return {
+        result = {
             "leader": leader_id,
             "assigned": command_map,
             "unassigned": unassigned,
         }
+        if gated is not None:
+            result["gate_status"] = gated["decision_status"]
+            result["telemetry_decisions"] = gated["decisions"]
+            result["gate_policy"] = gated["policy"]
+        return result
 
     def stop(self):
         if not self.running:

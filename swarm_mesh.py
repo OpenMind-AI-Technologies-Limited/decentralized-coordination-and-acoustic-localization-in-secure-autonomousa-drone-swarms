@@ -209,6 +209,10 @@ class MeshNode:
         self.issued_certificate_epochs: set[int] = set()
         self.delivered_commands: list[dict] = []
         self.positions: Dict[int, tuple[float, float, float]] = {}
+        # Separate receipt-time metadata: a health-only heartbeat must not
+        # silently renew an old position's freshness.
+        self.positions_seen_at: Dict[int, float] = {}
+        self.previous_positions: Dict[int, tuple[tuple[float, float, float], float]] = {}
         self._rtt_pending: Dict[str, tuple[int, float]] = {}
         self.measured_peer_rtt_ms: Dict[int, float] = {}
         self.on_command: Optional[Callable[[dict], None]] = None
@@ -226,7 +230,11 @@ class MeshNode:
             if len(pos) != 3 or not all(math.isfinite(x) for x in pos):
                 raise ValueError("Position must be finite XYZ")
             payload["position"] = list(pos)
+            if self.node_id in self.positions_seen_at:
+                self.previous_positions[self.node_id] = (
+                    self.positions[self.node_id], self.positions_seen_at[self.node_id])
             self.positions[self.node_id] = pos
+            self.positions_seen_at[self.node_id] = self.clock()
         return self.channel.seal("heartbeat", self.epoch, payload)
 
     def has_fresh_quorum(self) -> bool:
@@ -405,7 +413,11 @@ class MeshNode:
                 pos = tuple(float(x) for x in body["position"])
                 if len(pos) != 3 or not all(math.isfinite(x) for x in pos):
                     raise ValueError("Invalid position telemetry")
+                if sender in self.positions_seen_at:
+                    self.previous_positions[sender] = (
+                        self.positions[sender], self.positions_seen_at[sender])
                 self.positions[sender] = pos
+                self.positions_seen_at[sender] = self.clock()
             if sender == self.leader and self.certificate is not None and epoch == self.certificate.epoch:
                 self.last_leader_heartbeat = self.clock()
             return []
