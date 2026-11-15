@@ -20,6 +20,7 @@ from swarm_mesh import HealthReport, MeshNode, SwarmIdentity
 from swarm_identity_store import IdentityStore, VoteJournal
 from swarm_runtime import MeshRuntime
 from swarm_tasks import allocate_tasks
+from swarm_task_recovery import TaskRecoveryLedger
 from swarm_consistency_gate import (ConsistencyPolicy, SignedWitness,
                                     consistency_gated_allocate)
 from swarm_transport import UdpPeerTransport
@@ -497,6 +498,87 @@ class DroneMeshSimulation:
             result["telemetry_decisions"] = gated["decisions"]
             result["gate_policy"] = gated["policy"]
         return result
+
+    def plan_recovery_tasks(
+        self, ledger: TaskRecoveryLedger, *,
+        consistency_policy: ConsistencyPolicy = ConsistencyPolicy(),
+        witnesses: Optional[Mapping[int, Sequence[SignedWitness]]] = None,
+    ) -> dict:
+        """Audit and commit recovered *intent*; never dispatch flight commands.
+
+        This opt-in path is independent of the legacy command_tasks baseline.
+        A certified leader and a fresh quorum must authorize the exact preview
+        BEFORE the local ledger state is committed. Only registered, running,
+        self-reporting members passing the evidence policy are eligible.
+
+        A signed owner STOPPED receipt may be dishonest; this simulation does
+        not demonstrate hardware stopping, global exactly-once execution, or
+        distributed consensus of the task recovery ledger.
+        """
+        leader_id = self.leader()
+        if leader_id is None:
+            raise PermissionError("No quorum-certified task recovery coordinator")
+        node = self._runtimes[leader_id].node
+        if not node.has_fresh_quorum():
+            raise PermissionError("Recovery requires fresh quorum")
+        if node.roster != ledger.roster:
+            raise ValueError("Task ledger roster does not match authenticated mesh")
+        now = node.clock()
+        fresh_health = {
+            member: report for member, (report, received) in node.health.items()
+            if member in node.roster and
+            not self._runtimes[member]._stop.is_set() and
+            0 <= now - received <= node.timeout_s
+        }
+        fresh_position = {
+            member: node.positions[member] for member in fresh_health
+            if member in node.positions
+        }
+        gated = consistency_gated_allocate(
+            positions=fresh_position, health=fresh_health,
+            health_seen_at={i: received for i, (_, received) in node.health.items()},
+            position_seen_at=node.positions_seen_at,
+            previous_positions=node.previous_positions,
+            now=now,
+            tasks={task_id: state["target"] for task_id, state in ledger.tasks.items()
+                   if state["status"] == "PENDING"},
+            roster=node.roster, epoch=node.epoch, policy=consistency_policy,
+            witnesses=witnesses,
+        )
+        accepted = {
+            member for member, detail in gated["decisions"].items()
+            if detail["action"] == "ACCEPT"
+        }
+        preview = ledger.preview(
+            now=now, epoch=node.epoch, leader_id=leader_id,
+            quorum_verified=True, positions=fresh_position,
+            health=fresh_health, allowed_members=accepted,
+        )
+        audit = None
+        committed = []
+        if preview["proposed"]:
+            # The quorum event is committed before the local intent changes.
+            # If auditing fails, there is NO lease mutation and NO dispatch.
+            audit = self.audit_event({
+                "kind": "task_recovery_lease_intent",
+                "mission_id": ledger.mission_id,
+                "expected_revision": preview["expected_revision"],
+                "leader_id": leader_id,
+                "epoch": node.epoch,
+                "proposed": preview["proposed"],
+            })
+            committed = ledger.commit(
+                preview, quorum_verified=node.has_fresh_quorum())["committed"]
+        return {
+            "leader": leader_id,
+            "mission_id": ledger.mission_id,
+            "lease_plan": preview,
+            "committed": committed,
+            "quorum_audit": audit,
+            "telemetry_decisions": gated["decisions"],
+            "broadcast_commands_issued": False,
+            "physical_execution_verified": False,
+        }
 
     def stop(self):
         if not self.running:
