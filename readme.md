@@ -45,9 +45,22 @@ scenario definitions, transparent baseline limitations and reproducibility.
 
 > **Documentation cleanup (November 2026):** Legacy PNG screenshots, plotted results, research-image duplicates, and obsolete architecture graphics have been removed from the tracked repository. The current manuscript-specific diagrams are maintained as five SVG assets in [figures/](figures/). No simulation results or hardware validation should be inferred from older image captions. Experimental source, datasets, protocol notes, and historical PDFs remain available for traceability.
 
-## Current manuscript and evidence
+## New independent research draft: signed-witness safety–availability limits
 
-**Current study:** *Quorum-Gated Authority and Safety–Availability Trade-offs in Decentralized UAV Swarms under Communication Faults* (SN Computer Science, Original Research submission preparation).
+The separate research paper **[When Signed Witnesses Disagree: Safety–Availability Limits of Consistency-Gated Task Allocation in Simulated UAV Swarms](Docs/CONSISTENCY_GATED_STEP10_MANUSCRIPT.md)** evaluates conflicting signed UAV health claims rather than reusing the acoustic/localization or authority-election article's evidence.
+
+- [Full Step 10 working manuscript](Docs/CONSISTENCY_GATED_STEP10_MANUSCRIPT.md)
+- [Source/data provenance and SHA-256 index](Docs/CONSISTENCY_GATED_STEP10_EVIDENCE_INDEX.md)
+- [Verified experimental findings](Docs/CONSISTENCY_GATED_STEP8_HELDOUT_FINDINGS.md) and [Step 9 independent data audit](Docs/CONSISTENCY_GATED_STEP9_SCIENTIFIC_READINESS.md)
+- [Manual author/venue submission checklist](Docs/CONSISTENCY_GATED_STEP10_SUBMISSION_CHECKLIST.md)
+
+**Evidence:** 288 software development episodes, 720 independently seeded heldout episodes, and six policies on the same episode inputs (4,320 *correlated* policy rows). In the heldout balanced synthetic scenario mixture, conservative witness veto resulted in 0/720 episodes with a resource-ineligible assignee at 83.24% task coverage, whereas three-witness median + motion resulted in 30/720 at 83.48%. Signed sender identity does not prove truthful telemetry; these are **not** real UAV safety or real-world failure rates.
+
+**Publication status:** Working draft only. Original-algorithm superiority **not demonstrated**; unresolved author declarations, literature/overlap review, stable data deposit, and journal selection mean **submission is on hold**. No paper has been submitted by this workflow.
+
+## Earlier authority/coordination manuscript and evidence
+
+**Separate pre-existing study:** *Quorum-Gated Authority and Safety–Availability Trade-offs in Decentralized UAV Swarms under Communication Faults* (SN Computer Science, Original Research submission preparation).
 
 The research examines **quorum-certified authority versus protective refusal** under network partitions, communication losses, and selected Byzantine-fault scenarios. The study also reports communication overhead and separate simulated waypoint, assignment, and acoustic experiments. The scope is **fixed-membership, seeded software simulation**, not certified physical-flight validation.
 

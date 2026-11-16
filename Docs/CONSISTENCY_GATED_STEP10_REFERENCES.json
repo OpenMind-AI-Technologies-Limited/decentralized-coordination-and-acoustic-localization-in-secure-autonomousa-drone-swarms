@@ -1,0 +1,67 @@
+{
+  "verification_date": "2026-11-16",
+  "verification_scope": "Targeted publisher/official institutional source metadata checked; NOT an exhaustive systematic literature search",
+  "manuscript_status": "working_draft",
+  "references": [
+    {
+      "number": 1,
+      "year": 2004,
+      "authors": "Brian P. Gerkey; Maja J. Matarić",
+      "title": "A Formal Analysis and Taxonomy of Task Allocation in Multi-Robot Systems",
+      "venue": "The International Journal of Robotics Research 23(9):939–954",
+      "doi": "10.1177/0278364904045564",
+      "publisher_url": "https://journals.sagepub.com/doi/10.1177/0278364904045564",
+      "role": "Foundational MRTA taxonomy"
+    },
+    {
+      "number": 2,
+      "year": 2009,
+      "authors": "Han-Lim Choi; Luc Brunet; Jonathan P. How",
+      "title": "Consensus-Based Decentralized Auctions for Robust Task Allocation",
+      "venue": "IEEE Transactions on Robotics 25(4):912–926",
+      "doi": "10.1109/TRO.2009.2022423",
+      "publisher_url": "https://ieeexplore.ieee.org/document/5072249/",
+      "role": "Published CBAA vs full CBBA reference, not implemented in full here"
+    },
+    {
+      "number": 3,
+      "year": 2022,
+      "authors": "Sharan Raja; Golnaz Habibi; Jonathan P. How",
+      "title": "Communication-Aware Consensus-Based Decentralized Task Allocation in Communication Constrained Environments",
+      "venue": "IEEE Access 10:19753–19767",
+      "doi": "10.1109/ACCESS.2021.3138857",
+      "publisher_url": "https://ieeexplore.ieee.org/document/9663359/",
+      "role": "Published communication-constrained CBBA context"
+    },
+    {
+      "number": 4,
+      "year": 2026,
+      "authors": "Chenxu Zhao; Meixuan Li; Xianqiang Zhu; Cheng Zhu",
+      "title": "Assignment-Consistent Dynamic Multi-UAV Task Allocation: Communication-Efficient Dynamic Multi-Unmanned Aerial Vehicle Task Allocation Under Stale and Asymmetric Information",
+      "venue": "Drones 10(7):523",
+      "doi": "10.3390/drones10070523",
+      "publisher_url": "https://www.mdpi.com/2504-446X/10/7/523",
+      "role": "Closest known 2026 overlap; must not assert first consistency approach"
+    },
+    {
+      "number": 5,
+      "year": 2026,
+      "authors": "Tao Liu; Shuanghao Wei; Chengjin Liu; Guanghan Bai; Junfu Zhang; Chaofeng Yuan",
+      "title": "A resilient task allocation method for unmanned aerial vehicle swarm considering local information",
+      "venue": "Reliability Engineering & System Safety 272:112442",
+      "doi": "10.1016/j.ress.2026.112442",
+      "publisher_url": "https://www.sciencedirect.com/science/article/pii/S0951832026002589",
+      "role": "Related local-information resilient allocation; full text may be paywalled"
+    },
+    {
+      "number": 6,
+      "year": 1982,
+      "authors": "Leslie Lamport; Robert Shostak; Marshall Pease",
+      "title": "The Byzantine Generals Problem",
+      "venue": "ACM Transactions on Programming Languages and Systems 4(3):382–401",
+      "doi": "10.1145/357172.357176",
+      "publisher_url": "https://dl.acm.org/doi/10.1145/357172.357176",
+      "role": "Theoretical background, not proof of this coordinator"
+    }
+  ]
+}
